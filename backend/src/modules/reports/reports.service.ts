@@ -252,8 +252,8 @@ export async function getWeeklyLeadPerformanceReport(weeksBack = 1) {
     distinct: ['leadId'],
   });
 
-  const notInterested = leads.filter((l) =>
-    [LeadStatus.NOT_INTERESTED, LeadStatus.DEPOSITION].includes(l.status)
+  const notInterested = leads.filter(
+    (l) => l.status === LeadStatus.NOT_INTERESTED || l.status === LeadStatus.DEPOSITION
   ).length;
   const callBack = leads.filter((l) => l.status === LeadStatus.QUALIFIER_CALLBACK).length;
   const wrongNumber = wrongNumberLeads.length;
@@ -412,7 +412,9 @@ export async function getAgentSummaryReport(agentId: string, weeksBack = 4) {
 
   const total = leads.length;
   const sentToQualifier = leads.filter((l) => l.status === LeadStatus.QUALIFYING).length;
-  const depositions = leads.filter((l) => [LeadStatus.DEPOSITION, LeadStatus.NOT_INTERESTED].includes(l.status)).length;
+  const depositions = leads.filter(
+    (l) => l.status === LeadStatus.DEPOSITION || l.status === LeadStatus.NOT_INTERESTED
+  ).length;
   const appointmentSet = leads.filter((l) => l.status === LeadStatus.APPOINTMENT_SET).length;
   const inPipeline = leads.filter((l) => ['NEW', 'CONTACTED', 'INTERESTED', 'QUALIFIER_CALLBACK', 'NO_CONTACT'].includes(l.status)).length;
 

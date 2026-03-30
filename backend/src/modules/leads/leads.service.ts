@@ -1,4 +1,4 @@
-import { LeadStatus } from '@prisma/client';
+import { AppointmentStatus, LeadStatus } from '@prisma/client';
 import { prisma } from '../../db';
 import { AppError } from '../../middleware/errorHandler';
 import {
@@ -18,8 +18,8 @@ const leadInclude = {
   assignedFieldSalesRep: { select: { id: true, fullName: true, email: true } },
   duplicateOfLead: { select: { id: true, firstName: true, lastName: true } },
   appointments: {
-    where: { status: 'SCHEDULED' },
-    orderBy: { scheduledAt: 'asc' },
+    where: { status: AppointmentStatus.SCHEDULED },
+    orderBy: { scheduledAt: 'asc' as const },
     take: 1,
     include: { fieldSalesRep: { select: { fullName: true } } },
   },
@@ -368,15 +368,18 @@ export async function qualifyLead(
 
   if (input.status === 'qualifier_callback' && input.qualifier_callback_date) {
     const { createTask } = await import('../tasks/tasks.service');
-    await createTask({
-      title: `Qualifier Callback - ${lead.firstName} ${lead.lastName}`,
-      description: input.qualifier_notes || undefined,
-      type: 'CALL',
-      priority: 'HIGH',
-      dueDate: input.qualifier_callback_date,
-      assignedToUserId: userId,
-      leadId: id,
-    });
+    await createTask(
+      {
+        title: `Qualifier Callback - ${lead.firstName} ${lead.lastName}`,
+        description: input.qualifier_notes || undefined,
+        type: 'CALL',
+        priority: 'HIGH',
+        dueDate: input.qualifier_callback_date,
+        assignedToUserId: userId,
+        leadId: id,
+      },
+      userId
+    );
   }
 
   return { lead, calendar_synced: calendarSynced };
