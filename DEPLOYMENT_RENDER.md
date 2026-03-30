@@ -94,6 +94,40 @@ Vite bakes this in at **build time**. After changing it, trigger a **new deploy*
 - Free **web services** spin down after idle; the first request can be slow.
 - Use **HTTPS** URLs only in production for `CORS_ORIGINS` and `VITE_API_URL`.
 
+## Supabase + Render: `P1001 Can't reach database server`
+
+Render shows this when the container runs Prisma (`migrate deploy` / `db push`) and **cannot open a TCP connection** to Postgres.
+
+### 1. Supabase project is paused
+
+Free projects **pause** after inactivity. Open [Supabase Dashboard](https://supabase.com/dashboard) → your project → if it says **paused**, click **Restore** / resume and wait until it is healthy, then redeploy on Render.
+
+### 2. IPv4 vs IPv6 (very common)
+
+Render’s outbound connections use **IPv4**. Supabase **direct** host `db.<project-ref>.supabase.co:5432` can resolve in a way that **does not work** from every host.
+
+**Use a connection string that is IPv4-friendly:**
+
+1. Supabase → **Project Settings** → **Database**.
+2. Under **Connection string**, open the **URI** tab and choose **Session pooler** (best for Prisma) or **Transaction pooler** — **not** “Direct connection” if you hit P1001 from Render.
+3. Copy the URI; it should look like a host such as `aws-0-<region>.pooler.supabase.com` (or similar) with port **5432** (session) or **6543** (transaction), **not** only `db.xxxx.supabase.co`.
+4. Ensure the password is correct and the string includes SSL, e.g. `?sslmode=require` (Supabase often appends this).
+
+Paste that value into Render as **`DATABASE_URL`** and redeploy.
+
+Official guides: [Supabase — Connect to Postgres](https://supabase.com/docs/guides/database/connecting-to-postgres), [Supabase — Prisma](https://supabase.com/docs/guides/database/prisma).
+
+### 3. Transaction pooler + Prisma
+
+If you use the **Transaction** pooler (port **6543**), Prisma expects `?pgbouncer=true` and `connection_limit=1` on the URL for runtime queries. For **`prisma migrate deploy`**, Prisma may need a **direct** or **session** URL — see the Supabase Prisma doc above. If migrations fail, **Session pooler** (port 5432) is usually easier than Transaction mode.
+
+### 4. Still stuck
+
+- Try **Neon** or **Render Postgres** for a plain `postgresql://…` URL that works from Render.
+- Confirm no **network restrictions** on Supabase that block Render’s IPs (rare on default projects).
+
+---
+
 ## Manual setup (without Blueprint)
 
 If you prefer not to use `render.yaml`:
