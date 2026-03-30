@@ -32,6 +32,12 @@ npm run dev
 
 Open http://localhost:5173
 
+## Deploy on Render (frontend + backend)
+
+This repo includes [`render.yaml`](render.yaml) (Blueprint) and a full guide: **[DEPLOYMENT_RENDER.md](DEPLOYMENT_RENDER.md)**.
+
+Summary: create a **PostgreSQL** database (Render, Supabase, or Neon), deploy the **API** (Docker) and **static frontend** from the Blueprint, set `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS` on the API, and `VITE_API_URL` (e.g. `https://your-api.onrender.com/api`) on the static site.
+
 ## Documentation
 
 - [Admin Dashboard Spec](docs/ADMIN_DASHBOARD_SPEC.md)
