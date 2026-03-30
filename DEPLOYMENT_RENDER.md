@@ -38,8 +38,7 @@ This app uses **Prisma** with `provider = "postgresql"` and reads **`DATABASE_UR
 
 ### After `DATABASE_URL` is set
 
-- The **Dockerfile** runs `npx prisma db push` when the container starts, which creates/updates tables from your Prisma schema on the empty database.
-- For **production** you may later switch to **`prisma migrate deploy`** in CI or a release command instead of `db push`; for a first deploy, `db push` is acceptable.
+- The **Dockerfile** runs **`npx prisma migrate deploy`** on container start, which applies SQL migrations under `backend/prisma/migrations/` (including the full initial schema on an empty database).
 - **Seed data (optional):** run `npm run db:seed` locally against the same `DATABASE_URL` if you want default users, or insert users via your app’s admin flow.
 
 ### Troubleshooting
@@ -73,7 +72,7 @@ This app uses **Prisma** with `provider = "postgresql"` and reads **`DATABASE_UR
 
 Copy the rest from your local `backend/.env` as needed: Twilio, `LEAD_IMPORT_API_KEY`, `JWT_EXPIRES_IN`, business hours, etc.
 
-The Docker image runs `npx prisma db push` on start so the schema is applied; for production you may prefer `prisma migrate deploy` in a release step.
+The Docker image runs **`npx prisma migrate deploy`** on start so migrations are applied.
 
 ### Frontend (`margav-crm-web`)
 
@@ -125,6 +124,23 @@ If you use the **Transaction** pooler (port **6543**), Prisma expects `?pgbounce
 
 - Try **Neon** or **Render Postgres** for a plain `postgresql://…` URL that works from Render.
 - Confirm no **network restrictions** on Supabase that block Render’s IPs (rare on default projects).
+
+## `P3018` / `relation "Lead" does not exist` (failed migration)
+
+This happens when an **incremental** migration runs on an **empty** database (no base tables yet). The repo now includes an **`init_schema`** migration that creates the full schema before any follow-up migrations.
+
+If a previous deploy **failed** partway through, Prisma may have recorded that migration in **`_prisma_migrations`**. Before redeploying:
+
+1. In **Supabase** → **SQL Editor**, run (adjust the migration name if yours differs):
+
+   ```sql
+   DELETE FROM "_prisma_migrations"
+   WHERE migration_name = '20250326120000_lead_ops_fields';
+   ```
+
+   Or use **`prisma migrate resolve`** from a machine with `DATABASE_URL` set — see [Prisma: production troubleshooting](https://www.prisma.io/docs/guides/migrate/production-troubleshooting).
+
+2. If the database is **empty** (no app tables), you can also run **`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`** and re-grant privileges per Supabase defaults, then redeploy so **`20250320120000_init_schema`** applies cleanly. Only do this if you have **no data** to keep.
 
 ---
 
