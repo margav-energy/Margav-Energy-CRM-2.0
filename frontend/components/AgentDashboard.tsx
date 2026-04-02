@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AgentLeadForm } from './AgentLeadForm';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -33,6 +33,7 @@ const STATUS_DISPLAY: Record<string, string> = {
   DEPOSITION: 'Deposition',
   QUALIFYING: 'Qualifying',
   QUALIFIED: 'Qualified',
+  SOLD: 'Sold',
   NOT_QUALIFIED: 'Not Qualified',
   APPOINTMENT_SET: 'Appointment Set',
   NO_CONTACT: 'No Contact',
@@ -78,6 +79,9 @@ export function AgentDashboard() {
   const [showLeadFormForExisting, setShowLeadFormForExisting] = useState(false);
   const [openWithCallback, setOpenWithCallback] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [tablePage, setTablePage] = useState(1);
+
+  const LEADS_PAGE_SIZE = 50;
 
   const loadLeads = useCallback(async () => {
     try {
@@ -118,18 +122,38 @@ export function AgentDashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  const filteredLeads = leads.filter((lead) => {
-    const name = `${lead.firstName} ${lead.lastName}`.toLowerCase();
-    const matchesSearch =
-      !searchTerm.trim() ||
-      name.includes(searchTerm.toLowerCase()) ||
-      (lead.phone ?? '').includes(searchTerm) ||
-      (lead.email ?? '').toLowerCase().includes(searchTerm.toLowerCase());
-    const displayStatus = formatStatus(lead.status);
-    const matchesStatus = statusFilter === 'all' || displayStatus === statusFilter || lead.status === statusFilter;
-    const matchesSource = sourceFilter === 'all' || (lead.source ?? '') === sourceFilter;
-    return matchesSearch && matchesStatus && matchesSource;
-  });
+  const filteredLeads = useMemo(
+    () =>
+      leads.filter((lead) => {
+        const name = `${lead.firstName} ${lead.lastName}`.toLowerCase();
+        const matchesSearch =
+          !searchTerm.trim() ||
+          name.includes(searchTerm.toLowerCase()) ||
+          (lead.phone ?? '').includes(searchTerm) ||
+          (lead.email ?? '').toLowerCase().includes(searchTerm.toLowerCase());
+        const displayStatus = formatStatus(lead.status);
+        const matchesStatus = statusFilter === 'all' || displayStatus === statusFilter || lead.status === statusFilter;
+        const matchesSource = sourceFilter === 'all' || (lead.source ?? '') === sourceFilter;
+        return matchesSearch && matchesStatus && matchesSource;
+      }),
+    [leads, searchTerm, statusFilter, sourceFilter]
+  );
+
+  const filteredCount = filteredLeads.length;
+  const tablePageCount = Math.max(1, Math.ceil(filteredCount / LEADS_PAGE_SIZE) || 1);
+
+  const pagedAgentLeads = useMemo(() => {
+    const start = (tablePage - 1) * LEADS_PAGE_SIZE;
+    return filteredLeads.slice(start, start + LEADS_PAGE_SIZE);
+  }, [filteredLeads, tablePage]);
+
+  useEffect(() => {
+    setTablePage(1);
+  }, [searchTerm, statusFilter, sourceFilter, leads]);
+
+  useEffect(() => {
+    if (tablePage > tablePageCount) setTablePage(tablePageCount);
+  }, [tablePage, tablePageCount]);
 
   const sources = Array.from(new Set(leads.map((l) => l.source).filter(Boolean))) as string[];
   const newToday = leads.filter((l) => isToday(l.createdAt)).length;
@@ -312,7 +336,7 @@ export function AgentDashboard() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredLeads.map((lead) => (
+                  pagedAgentLeads.map((lead) => (
                     <TableRow key={lead.id} className="hover:bg-gray-50">
                       <TableCell className="font-medium">
                         {lead.firstName} {lead.lastName}
@@ -340,7 +364,7 @@ export function AgentDashboard() {
                               setShowLeadFormForExisting(true);
                             }}
                             disabled={
-                              ['QUALIFYING', 'QUALIFIED', 'APPOINTMENT_SET', 'QUALIFIER_CALLBACK', 'NO_CONTACT', 'NOT_INTERESTED'].includes(lead.status)
+                              ['QUALIFYING', 'QUALIFIED', 'SOLD', 'APPOINTMENT_SET', 'QUALIFIER_CALLBACK', 'NO_CONTACT', 'NOT_INTERESTED'].includes(lead.status)
                             }
                           >
                             📞
@@ -361,7 +385,7 @@ export function AgentDashboard() {
                               setShowLeadFormForExisting(true);
                             }}
                             disabled={
-                              ['QUALIFYING', 'QUALIFIED', 'APPOINTMENT_SET', 'QUALIFIER_CALLBACK', 'NO_CONTACT', 'NOT_INTERESTED'].includes(lead.status)
+                              ['QUALIFYING', 'QUALIFIED', 'SOLD', 'APPOINTMENT_SET', 'QUALIFIER_CALLBACK', 'NO_CONTACT', 'NOT_INTERESTED'].includes(lead.status)
                             }
                           >
                             ✓
@@ -373,6 +397,42 @@ export function AgentDashboard() {
                 )}
               </TableBody>
             </Table>
+            {!loading && filteredCount > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t bg-muted/20">
+                <p className="text-sm text-muted-foreground">
+                  Showing{' '}
+                  <span className="font-medium tabular-nums text-foreground">
+                    {(tablePage - 1) * LEADS_PAGE_SIZE + 1}–{Math.min(tablePage * LEADS_PAGE_SIZE, filteredCount)}
+                  </span>{' '}
+                  of {filteredCount}
+                  {tablePageCount > 1 ? (
+                    <span className="text-muted-foreground"> · Page {tablePage} of {tablePageCount}</span>
+                  ) : null}
+                </p>
+                {tablePageCount > 1 ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={tablePage <= 1}
+                      onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={tablePage >= tablePageCount}
+                      onClick={() => setTablePage((p) => Math.min(tablePageCount, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

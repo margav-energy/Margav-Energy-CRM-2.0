@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '../ui/sheet';
@@ -10,7 +11,8 @@ import { ScrollArea } from '../ui/scroll-area';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { getLeadById, getLeadActivity, sendSmsToLead } from '../../lib/api';
-import { Phone, MessageSquare, Calendar, Mail, MapPin, FileEdit, CheckCircle } from 'lucide-react';
+import { getGoogleCalendarWebAppUrl } from '../../lib/calendarUrls';
+import { Phone, MessageSquare, Calendar, Mail, MapPin, FileEdit, CheckCircle, StickyNote } from 'lucide-react';
 import { AgentLeadForm } from '../AgentLeadForm';
 import { QualifierLeadModal } from '../QualifierLeadModal';
 import { useAuth } from '../../lib/auth-context';
@@ -53,13 +55,29 @@ export function LeadDetailSheet({ leadId, onClose, onUpdated }: LeadDetailSheetP
       return;
     }
     setLoading(true);
-    Promise.all([getLeadById(leadId), getLeadActivity(leadId)])
-      .then(([l, a]) => {
+    setActivity([]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const l = await getLeadById(leadId);
+        if (cancelled) return;
         setLead(l as Record<string, unknown>);
+      } catch {
+        if (!cancelled) setLead(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+      try {
+        const a = await getLeadActivity(leadId);
+        if (cancelled) return;
         setActivity((a as ActivityItem[]) ?? []);
-      })
-      .catch(() => setLead(null))
-      .finally(() => setLoading(false));
+      } catch {
+        if (!cancelled) setActivity([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [leadId]);
 
   const handleSendSms = async () => {
@@ -69,8 +87,12 @@ export function LeadDetailSheet({ leadId, onClose, onUpdated }: LeadDetailSheetP
       await sendSmsToLead(leadId, smsInput.trim());
       setSmsInput('');
       onUpdated?.();
-      const a = await getLeadActivity(leadId);
-      setActivity((a as ActivityItem[]) ?? []);
+      try {
+        const a = await getLeadActivity(leadId);
+        setActivity((a as ActivityItem[]) ?? []);
+      } catch {
+        /* activity endpoint optional */
+      }
     } finally {
       setSendingSms(false);
     }
@@ -86,6 +108,9 @@ export function LeadDetailSheet({ leadId, onClose, onUpdated }: LeadDetailSheetP
       <SheetContent className="sm:max-w-md flex flex-col p-0">
         <SheetHeader className="p-4 border-b">
           <SheetTitle>{loading ? 'Loading...' : leadName || 'Lead'}</SheetTitle>
+          <SheetDescription className="sr-only">
+            Contact details, notes, SMS, and activity for this lead.
+          </SheetDescription>
         </SheetHeader>
 
         {lead && (
@@ -109,11 +134,7 @@ export function LeadDetailSheet({ leadId, onClose, onUpdated }: LeadDetailSheetP
                 SMS
               </Button>
               <Button size="sm" variant="outline" asChild>
-                <a
-                  href={import.meta.env.VITE_SURVEY_LINK || 'https://calendly.com'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <a href={getGoogleCalendarWebAppUrl()} target="_blank" rel="noopener noreferrer">
                   <Calendar className="h-4 w-4 mr-1" />
                   Schedule
                 </a>
@@ -164,7 +185,24 @@ export function LeadDetailSheet({ leadId, onClose, onUpdated }: LeadDetailSheetP
               {lead.status ? (
                 <Badge variant="secondary">{String(lead.status).replace(/_/g, ' ')}</Badge>
               ) : null}
+              {lead.source ? (
+                <div className="text-xs text-muted-foreground">
+                  Source: <span className="text-foreground font-medium">{String(lead.source)}</span>
+                </div>
+              ) : null}
             </div>
+
+            {lead.notes ? (
+              <div className="px-4 pb-4 border-b">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">
+                  <StickyNote className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+                  Sheet / import notes
+                </div>
+                <div className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md bg-muted/50 border border-border/60 p-3 max-h-64 overflow-y-auto">
+                  {String(lead.notes)}
+                </div>
+              </div>
+            ) : null}
 
             {/* Send SMS */}
             <div className="p-4 border-t">

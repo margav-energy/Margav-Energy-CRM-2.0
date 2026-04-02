@@ -8,6 +8,7 @@ const leadStatusEnum = z.enum([
   'DEPOSITION',
   'QUALIFYING',
   'QUALIFIED',
+  'SOLD',
   'NOT_QUALIFIED',
   'APPOINTMENT_SET',
   'NO_CONTACT',
@@ -85,6 +86,8 @@ export const QUALIFIER_STATUS_MAP: Record<string, string> = {
   pass_back_to_agent: 'INTERESTED',
   on_hold: 'QUALIFYING',
   qualifier_callback: 'QUALIFIER_CALLBACK',
+  qualified: 'QUALIFIED',
+  sold: 'SOLD',
 };
 
 export const qualifyLeadSchema = z.object({
@@ -126,7 +129,10 @@ export const listLeadsQuerySchema = z.object({
   page: z.coerce.number().min(1).default(1),
   pageSize: z.coerce.number().min(1).max(500).default(20),
   status: leadStatusEnum.optional(),
+  /** Single source filter */
   source: z.string().optional(),
+  /** Comma-separated sources (e.g. Rattle,Leadwise) */
+  sources: z.string().optional(),
   assignedAgentId: z.string().cuid().optional(),
   assignedQualifierId: z.string().cuid().optional(),
   assignedFieldSalesRepId: z.string().cuid().optional(),

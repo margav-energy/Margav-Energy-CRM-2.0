@@ -31,7 +31,7 @@ export async function authMiddleware(
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, email: true, role: true },
+      select: { id: true, email: true, username: true, role: true },
     });
 
     if (!user) {
@@ -42,6 +42,7 @@ export async function authMiddleware(
     req.user = {
       userId: user.id,
       email: user.email,
+      username: user.username,
       role: user.role,
     };
     next();

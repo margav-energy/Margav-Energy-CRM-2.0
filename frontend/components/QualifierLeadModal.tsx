@@ -49,9 +49,9 @@ function parseAgentNotes(notes: string): Record<string, unknown> {
       if (lowerKey.includes('spray foam')) agentData.spray_foam_roof = value.toLowerCase().includes('yes');
       if (lowerKey.includes('building work')) agentData.building_work_roof = value.toLowerCase().includes('yes');
       if (lowerKey.includes('loft conversions')) agentData.loft_conversions = value.toLowerCase().includes('yes');
-      if (lowerKey.includes('velux windows')) agentData.velux_windows = value.toLowerCase().includes('yes');
-      if (lowerKey.includes('dormers')) agentData.dormers = value.toLowerCase().includes('yes');
-      if (lowerKey.includes('dormas')) agentData.dormas_shading_windows = value.toLowerCase().includes('yes');
+      if (lowerKey.includes('velux windows') || lowerKey.includes('solar windows'))
+        agentData.velux_windows = value.toLowerCase().includes('yes');
+      if (lowerKey.includes('dormers') && !lowerKey.includes('dormas')) agentData.dormers = value.toLowerCase().includes('yes');
     }
   }
   return agentData;
@@ -103,6 +103,9 @@ function toQualifierStatus(backendStatus?: string): string {
     NOT_INTERESTED: 'blow_out',
     CONTACTED: 'no_contact',
     INTERESTED: 'pass_back_to_agent',
+    QUALIFIED: 'qualified',
+    SOLD: 'sold',
+    DEPOSITION: 'blow_out',
   };
   return map[backendStatus || ''] || 'sent_to_kelly';
 }
@@ -291,13 +294,31 @@ export function QualifierLeadModal({ lead, open, onClose, onSuccess }: Qualifier
         field_sales_rep: formData.field_sales_rep || null,
       };
 
+      if (formData.status === 'appointment_set') {
+        if (!payload.appointment_date || !payload.field_sales_rep) {
+          toast.error('Please set appointment date and time and select a field sales rep.');
+          return;
+        }
+      }
+
       const result = await qualifyLead(lead.id, payload);
 
-      if (formData.status === 'appointment_set' && !result.calendar_synced) {
-        toast.warning('Lead qualified successfully, but Google Calendar sync failed. The appointment may not appear in the calendar.', {
-          autoClose: 8000,
-          position: 'top-right',
-        });
+      if (formData.status === 'appointment_set') {
+        if (result.appointment_created === true) {
+          if (result.calendar_synced) {
+            toast.success(
+              'Lead qualified successfully. Appointment saved in the CRM and synced to Google Calendar.'
+            );
+          } else {
+            toast.success('Lead qualified successfully. Appointment saved in the CRM.');
+          }
+        } else if (result.appointment_created === false) {
+          toast.warning(
+            'Lead saved, but no appointment was created. Check appointment date and field sales rep.'
+          );
+        } else {
+          toast.success('Lead qualified successfully!');
+        }
       } else {
         toast.success('Lead qualified successfully!');
       }
@@ -622,6 +643,8 @@ export function QualifierLeadModal({ lead, open, onClose, onSuccess }: Qualifier
                   <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">Qualification Status</label>
                   <select id="status" name="status" value={formData.status} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
                     <option value="sent_to_kelly">📋 Sent to Qualifier (Current)</option>
+                    <option value="qualified">✅ Qualified</option>
+                    <option value="sold">🏆 Sold</option>
                     <option value="no_contact">📞 No Contact</option>
                     <option value="blow_out">💨 Blow Out</option>
                     <option value="appointment_set">📅 Appointment Set</option>

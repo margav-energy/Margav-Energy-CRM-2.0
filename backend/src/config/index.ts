@@ -1,6 +1,11 @@
+import path from 'path';
 import dotenv from 'dotenv';
 
+// Default dotenv only reads process.cwd()/.env — if your shell cwd is wrong, OAuth vars
+// never load. Always load backend/.env from this file's location (works for src/ and dist/).
+const backendEnvRoot = path.join(__dirname, '../../.env');
 dotenv.config();
+dotenv.config({ path: backendEnvRoot, override: true });
 
 if (!process.env.DATABASE_URL) {
   console.warn('Warning: DATABASE_URL is not set. Database operations will fail.');
@@ -78,4 +83,58 @@ export const config = {
   smsJourneyTestApptReminderWindowSec: parseInt(process.env.SMS_JOURNEY_TEST_APPT_REMINDER_WINDOW_SEC ?? '180', 10),
   /** Test: SMS #8 — appointments with scheduledAt between now+1s and now+N s (book within this window to test) */
   smsJourneyTestSurveyorWindowSec: parseInt(process.env.SMS_JOURNEY_TEST_SURVEYOR_WINDOW_SEC ?? '120', 10),
+  /** Comma-separated qualifier usernames (lowercase) for Rattle/Leadwise sheet sync + dashboard */
+  specialSheetsQualifierUsernames: (process.env.SPECIAL_SHEETS_QUALIFIER_USERNAMES ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+  /** Legacy: also match by email if set */
+  specialSheetsQualifierEmails: (process.env.SPECIAL_SHEETS_QUALIFIER_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+  googleSheets: {
+    /** Public sheets only: create an API key (APIs & Services → Credentials), restrict to Sheets API */
+    apiKey: process.env.GOOGLE_SHEETS_API_KEY?.trim() || undefined,
+    /** OAuth2 — also accepts GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_OAUTH_REFRESH_TOKEN */
+    oauthClientId:
+      process.env.GOOGLE_SHEETS_OAUTH_CLIENT_ID?.trim() ||
+      process.env.GOOGLE_CLIENT_ID?.trim() ||
+      undefined,
+    oauthClientSecret:
+      process.env.GOOGLE_SHEETS_OAUTH_CLIENT_SECRET?.trim() ||
+      process.env.GOOGLE_CLIENT_SECRET?.trim() ||
+      undefined,
+    oauthRefreshToken:
+      process.env.GOOGLE_SHEETS_OAUTH_REFRESH_TOKEN?.trim() ||
+      process.env.GOOGLE_OAUTH_REFRESH_TOKEN?.trim() ||
+      undefined,
+    serviceAccountJson: process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON,
+    serviceAccountJsonB64: process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_B64,
+    rattleSpreadsheetId:
+      process.env.RATTLE_SPREADSHEET_ID || '1jcEQJHnDXFoHpseVVYpt4kDaB_iK5ChbkWImJS7V7gQ',
+    rattleSheetName: process.env.RATTLE_SHEET_NAME || 'Ver2',
+    leadwiseSpreadsheetId:
+      process.env.LEADWISE_SPREADSHEET_ID || '1wcrqQkOEXJmObaT5soi3X009LcGIBlrz4-5ToyF9Pek',
+    leadwiseSheetName: process.env.LEADWISE_SHEET_NAME || 'Leads',
+  },
+  /** Google Calendar API — appointment sync (same OAuth/SA as Sheets; OAuth token needs Calendar scope). */
+  googleCalendar: {
+    enabled: process.env.GOOGLE_CALENDAR_ENABLED !== 'false' && process.env.GOOGLE_CALENDAR_ENABLED !== '0',
+    /** Target calendar: usually `sales@margav.energy` or `primary` for the OAuth user */
+    calendarId: (process.env.GOOGLE_CALENDAR_ID || 'sales@margav.energy').trim(),
+    timezone: process.env.GOOGLE_CALENDAR_TIMEZONE || 'Europe/London',
+    /** Default survey / visit block length */
+    defaultDurationMinutes: parseInt(process.env.GOOGLE_CALENDAR_DEFAULT_DURATION_MINUTES || '60', 10),
+    /**
+     * Optional: refresh token that includes `calendar.events` scope.
+     * If unset, falls back to GOOGLE_SHEETS_OAUTH_REFRESH_TOKEN / GOOGLE_OAUTH_REFRESH_TOKEN
+     * (must re-authorize in OAuth Playground with Calendar scope — see scripts/google-calendar-oauth-setup.md).
+     */
+    oauthRefreshToken:
+      process.env.GOOGLE_CALENDAR_OAUTH_REFRESH_TOKEN?.trim() ||
+      process.env.GOOGLE_SHEETS_OAUTH_REFRESH_TOKEN?.trim() ||
+      process.env.GOOGLE_OAUTH_REFRESH_TOKEN?.trim() ||
+      undefined,
+  },
 };

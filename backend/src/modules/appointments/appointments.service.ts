@@ -2,6 +2,11 @@ import { AppointmentStatus } from '@prisma/client';
 import { prisma } from '../../db';
 import { AppError } from '../../middleware/errorHandler';
 import {
+  insertAppointmentCalendarEvent,
+  updateAppointmentCalendarEvent,
+  deleteAppointmentCalendarEvent,
+} from '../../lib/googleCalendar';
+import {
   CreateAppointmentInput,
   UpdateAppointmentInput,
   UpdateAppointmentStatusInput,
@@ -66,13 +71,20 @@ export async function getAppointmentById(id: string) {
   return appointment;
 }
 
-export async function createAppointment(input: CreateAppointmentInput) {
+export async function createAppointment(
+  input: CreateAppointmentInput
+): Promise<{ appointment: Awaited<ReturnType<typeof getAppointmentById>>; calendarSynced: boolean }> {
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } });
   if (!lead) {
     throw new AppError('Lead not found', 404);
   }
 
-  const appointment = await prisma.appointment.create({
+  const rep = await prisma.user.findUnique({
+    where: { id: input.fieldSalesRepId },
+    select: { fullName: true },
+  });
+
+  let appointment = await prisma.appointment.create({
     data: {
       leadId: input.leadId,
       fieldSalesRepId: input.fieldSalesRepId,
@@ -91,11 +103,38 @@ export async function createAppointment(input: CreateAppointmentInput) {
     },
   });
 
-  return appointment;
+  const eventId = await insertAppointmentCalendarEvent({
+    appointmentId: appointment.id,
+    scheduledAt: appointment.scheduledAt,
+    leadFirstName: lead.firstName,
+    leadLastName: lead.lastName,
+    phone: lead.phone,
+    email: lead.email,
+    addressLine1: lead.addressLine1,
+    city: lead.city,
+    postcode: lead.postcode,
+    fieldSalesRepName: rep?.fullName ?? null,
+    notes: input.notes ?? null,
+  });
+
+  let calendarSynced = false;
+  if (eventId) {
+    appointment = await prisma.appointment.update({
+      where: { id: appointment.id },
+      data: { googleCalendarEventId: eventId },
+      include: appointmentInclude,
+    });
+    calendarSynced = true;
+  }
+
+  return { appointment, calendarSynced };
 }
 
 export async function updateAppointment(id: string, input: UpdateAppointmentInput) {
-  const existing = await prisma.appointment.findUnique({ where: { id } });
+  const existing = await prisma.appointment.findUnique({
+    where: { id },
+    include: { lead: true, fieldSalesRep: { select: { fullName: true } } },
+  });
   if (!existing) {
     throw new AppError('Appointment not found', 404);
   }
@@ -110,6 +149,23 @@ export async function updateAppointment(id: string, input: UpdateAppointmentInpu
     include: appointmentInclude,
   });
 
+  if (existing.googleCalendarEventId) {
+    await updateAppointmentCalendarEvent({
+      eventId: existing.googleCalendarEventId,
+      appointmentId: appointment.id,
+      scheduledAt: appointment.scheduledAt,
+      leadFirstName: appointment.lead.firstName,
+      leadLastName: appointment.lead.lastName,
+      phone: appointment.lead.phone,
+      email: appointment.lead.email,
+      addressLine1: appointment.lead.addressLine1,
+      city: appointment.lead.city,
+      postcode: appointment.lead.postcode,
+      fieldSalesRepName: appointment.fieldSalesRep?.fullName ?? null,
+      notes: appointment.notes,
+    });
+  }
+
   return appointment;
 }
 
@@ -122,9 +178,23 @@ export async function updateAppointmentStatus(
     throw new AppError('Appointment not found', 404);
   }
 
+  const nextStatus = input.status as AppointmentStatus;
+  if (
+    existing.googleCalendarEventId &&
+    (nextStatus === AppointmentStatus.CANCELLED || nextStatus === AppointmentStatus.NO_SHOW)
+  ) {
+    await deleteAppointmentCalendarEvent(existing.googleCalendarEventId);
+  }
+
   const appointment = await prisma.appointment.update({
     where: { id },
-    data: { status: input.status as AppointmentStatus },
+    data: {
+      status: nextStatus,
+      ...(existing.googleCalendarEventId &&
+      (nextStatus === AppointmentStatus.CANCELLED || nextStatus === AppointmentStatus.NO_SHOW)
+        ? { googleCalendarEventId: null }
+        : {}),
+    },
     include: appointmentInclude,
   });
 

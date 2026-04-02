@@ -135,7 +135,8 @@ export interface SmsTemplate {
 export interface AdminUser {
   id: string;
   fullName: string;
-  email: string;
+  username: string;
+  email: string | null;
   role: string;
   status: 'active' | 'inactive';
   region?: string;

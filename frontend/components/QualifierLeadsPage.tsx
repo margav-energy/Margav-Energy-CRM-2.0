@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { QualifierLeadsTable } from './QualifierLeadsTable';
 import type { QualifierLead } from './QualifierKanban';
 import { QualifierSummaryCard } from './QualifierSummaryCard';
-import { Users, Target, Calendar, Clock } from 'lucide-react';
+import { Users, Target, Calendar, Clock, Trophy } from 'lucide-react';
 import { getLeads } from '../lib/api';
 
 function getWeekBounds(): { thisWeekStart: Date; thisWeekEnd: Date; lastWeekStart: Date; lastWeekEnd: Date } {
@@ -41,6 +41,9 @@ interface QualifierStats {
   qualifiedLeads: number;
   qualifiedThisWeek: number;
   qualifiedLastWeek: number;
+  soldLeads: number;
+  soldThisWeek: number;
+  soldLastWeek: number;
   appointmentsScheduled: number;
   appointmentsThisWeek: number;
   appointmentsLastWeek: number;
@@ -59,6 +62,9 @@ export function QualifierLeadsPage() {
     qualifiedLeads: 0,
     qualifiedThisWeek: 0,
     qualifiedLastWeek: 0,
+    soldLeads: 0,
+    soldThisWeek: 0,
+    soldLastWeek: 0,
     appointmentsScheduled: 0,
     appointmentsThisWeek: 0,
     appointmentsLastWeek: 0,
@@ -82,6 +88,7 @@ export function QualifierLeadsPage() {
 
       const qualifying = items.filter(byStatus('QUALIFYING'));
       const qualified = items.filter(byStatus('QUALIFIED'));
+      const sold = items.filter(byStatus('SOLD'));
       const appointmentSet = items.filter(byStatus('APPOINTMENT_SET'));
       const pending = items.filter(byStatusIn('QUALIFIER_CALLBACK', 'NO_CONTACT'));
 
@@ -92,6 +99,9 @@ export function QualifierLeadsPage() {
         qualifiedLeads: qualified.length,
         qualifiedThisWeek: qualified.filter(inThisWeek).length,
         qualifiedLastWeek: qualified.filter(inLastWeek).length,
+        soldLeads: sold.length,
+        soldThisWeek: sold.filter(inThisWeek).length,
+        soldLastWeek: sold.filter(inLastWeek).length,
         appointmentsScheduled: appointmentSet.length,
         appointmentsThisWeek: appointmentSet.filter(inThisWeek).length,
         appointmentsLastWeek: appointmentSet.filter(inLastWeek).length,
@@ -108,6 +118,9 @@ export function QualifierLeadsPage() {
         qualifiedLeads: 0,
         qualifiedThisWeek: 0,
         qualifiedLastWeek: 0,
+        soldLeads: 0,
+        soldThisWeek: 0,
+        soldLastWeek: 0,
         appointmentsScheduled: 0,
         appointmentsThisWeek: 0,
         appointmentsLastWeek: 0,
@@ -139,7 +152,7 @@ export function QualifierLeadsPage() {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <QualifierSummaryCard
           title="Leads to Qualify"
           value={stats.leadsToQualify}
@@ -155,6 +168,14 @@ export function QualifierLeadsPage() {
           change={formatWeekChange(stats.qualifiedThisWeek, stats.qualifiedLastWeek)}
           changeType={getChangeType(stats.qualifiedThisWeek, stats.qualifiedLastWeek)}
           variant="emerald"
+        />
+        <QualifierSummaryCard
+          title="Sold"
+          value={stats.soldLeads}
+          icon={Trophy}
+          change={formatWeekChange(stats.soldThisWeek, stats.soldLastWeek)}
+          changeType={getChangeType(stats.soldThisWeek, stats.soldLastWeek)}
+          variant="slate"
         />
         <QualifierSummaryCard
           title="Appointments Scheduled"
@@ -175,7 +196,7 @@ export function QualifierLeadsPage() {
       </div>
 
       {/* Leads Table */}
-      <QualifierLeadsTable leads={leads} loading={loading} onUpdated={loadLeads} />
+      <QualifierLeadsTable leads={leads} loading={loading} onUpdated={loadLeads} statusStyle="pill" />
     </div>
   );
 }

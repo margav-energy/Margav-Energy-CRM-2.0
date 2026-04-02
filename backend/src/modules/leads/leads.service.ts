@@ -26,8 +26,17 @@ const leadInclude = {
 };
 
 export async function listLeads(query: ListLeadsQuery, userId: string, userRole: string) {
-  const { page, pageSize, status, source, assignedAgentId, assignedQualifierId, assignedFieldSalesRepId, search } =
-    query;
+  const {
+    page,
+    pageSize,
+    status,
+    source,
+    sources,
+    assignedAgentId,
+    assignedQualifierId,
+    assignedFieldSalesRepId,
+    search,
+  } = query;
   const skip = (page - 1) * pageSize;
 
   const where: Record<string, unknown> = {};
@@ -38,11 +47,25 @@ export async function listLeads(query: ListLeadsQuery, userId: string, userRole:
   } else if (assignedAgentId) {
     where.assignedAgentId = assignedAgentId;
   }
-  if (assignedQualifierId) where.assignedQualifierId = assignedQualifierId;
+  if (assignedQualifierId) {
+    if (userRole === 'QUALIFIER' && assignedQualifierId !== userId) {
+      throw new AppError('You can only filter by your own qualifier id', 403);
+    }
+    where.assignedQualifierId = assignedQualifierId;
+  }
   if (assignedFieldSalesRepId) where.assignedFieldSalesRepId = assignedFieldSalesRepId;
 
   if (status) where.status = status;
-  if (source) where.source = source;
+  if (sources) {
+    const parts = sources
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length === 1) where.source = parts[0];
+    else if (parts.length > 1) where.source = { in: parts };
+  } else if (source) {
+    where.source = source;
+  }
 
   if (search) {
     const searchLower = search.toLowerCase();
@@ -287,7 +310,11 @@ export async function qualifyLead(
   id: string,
   input: QualifyLeadInput,
   userId: string
-): Promise<{ lead: Awaited<ReturnType<typeof getLeadById>>; calendar_synced?: boolean }> {
+): Promise<{
+  lead: Awaited<ReturnType<typeof getLeadById>>;
+  appointment_created?: boolean;
+  calendar_synced?: boolean;
+}> {
   const existing = await prisma.lead.findUnique({ where: { id } });
   if (!existing) {
     throw new AppError('Lead not found', 404);
@@ -353,17 +380,19 @@ export async function qualifyLead(
     },
   });
 
+  let appointmentCreated = false;
   let calendarSynced = false;
 
   if (input.status === 'appointment_set' && input.appointment_date && input.field_sales_rep) {
     const { createAppointment } = await import('../appointments/appointments.service');
-    await createAppointment({
+    const apptResult = await createAppointment({
       leadId: id,
       fieldSalesRepId: input.field_sales_rep,
       scheduledAt: input.appointment_date,
       notes: input.qualifier_notes || undefined,
     });
-    calendarSynced = true; // TODO: integrate with Google Calendar API
+    appointmentCreated = true;
+    calendarSynced = apptResult.calendarSynced;
   }
 
   if (input.status === 'qualifier_callback' && input.qualifier_callback_date) {
@@ -382,7 +411,16 @@ export async function qualifyLead(
     );
   }
 
-  return { lead, calendar_synced: calendarSynced };
+  return { lead, appointment_created: appointmentCreated, calendar_synced: calendarSynced };
+}
+
+function jsonSerializableMetadata(value: unknown): unknown {
+  if (value == null) return undefined;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return undefined;
+  }
 }
 
 export async function getLeadActivity(leadId: string): Promise<ActivityItem[]> {
@@ -390,6 +428,12 @@ export async function getLeadActivity(leadId: string): Promise<ActivityItem[]> {
   if (!lead) {
     throw new AppError('Lead not found', 404);
   }
+
+  const smsThreads = await prisma.smsThread.findMany({
+    where: { leadId },
+    select: { id: true },
+  });
+  const smsThreadIds = smsThreads.map((t) => t.id);
 
   const [statusHistory, activityEvents, notes, tasks, callLogs, smsMessages] = await Promise.all([
     prisma.leadStatusHistory.findMany({
@@ -416,10 +460,12 @@ export async function getLeadActivity(leadId: string): Promise<ActivityItem[]> {
       include: { createdByUser: { select: { fullName: true } } },
       orderBy: { createdAt: 'desc' },
     }),
-    prisma.smsMessage.findMany({
-      where: { thread: { leadId } },
-      orderBy: { createdAt: 'desc' },
-    }),
+    smsThreadIds.length === 0
+      ? Promise.resolve([])
+      : prisma.smsMessage.findMany({
+          where: { threadId: { in: smsThreadIds } },
+          orderBy: { createdAt: 'desc' },
+        }),
   ]);
 
   const items: ActivityItem[] = [
@@ -429,7 +475,7 @@ export async function getLeadActivity(leadId: string): Promise<ActivityItem[]> {
       createdAt: h.createdAt,
       fromStatus: h.fromStatus,
       toStatus: h.toStatus,
-      changedBy: h.changedByUser,
+      changedBy: h.changedByUser ?? { fullName: 'Unknown' },
       note: h.note ?? undefined,
     })),
     ...smsMessages.map((m) => ({
@@ -444,14 +490,14 @@ export async function getLeadActivity(leadId: string): Promise<ActivityItem[]> {
       id: e.id,
       createdAt: e.createdAt,
       eventType: e.eventType,
-      metadata: e.metadata,
+      metadata: jsonSerializableMetadata(e.metadata),
     })),
     ...notes.map((n) => ({
       type: 'note' as const,
       id: n.id,
       createdAt: n.createdAt,
       content: n.content,
-      createdBy: n.createdByUser,
+      createdBy: n.createdByUser ?? { fullName: 'Unknown' },
     })),
     ...tasks.map((t) => ({
       type: 'task' as const,
@@ -460,7 +506,7 @@ export async function getLeadActivity(leadId: string): Promise<ActivityItem[]> {
       title: t.title,
       status: t.status,
       dueDate: t.dueDate,
-      assignedTo: t.assignedToUser,
+      assignedTo: t.assignedToUser ?? { fullName: 'Unknown' },
     })),
     ...callLogs.map((c) => ({
       type: 'call' as const,
@@ -468,7 +514,7 @@ export async function getLeadActivity(leadId: string): Promise<ActivityItem[]> {
       createdAt: c.createdAt,
       outcome: c.outcome,
       notes: c.notes ?? undefined,
-      createdBy: c.createdByUser,
+      createdBy: c.createdByUser ?? undefined,
     })),
   ];
 

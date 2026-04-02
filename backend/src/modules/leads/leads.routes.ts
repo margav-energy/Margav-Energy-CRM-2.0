@@ -24,6 +24,12 @@ router.post(
 
 router.use(authMiddleware);
 
+router.post(
+  '/sync/sheets',
+  requireRoles(Role.ADMIN, Role.QUALIFIER),
+  leadsController.syncSheetsFromGoogle
+);
+
 router.get(
   '/',
   requireRoles(Role.ADMIN, Role.AGENT, Role.QUALIFIER, Role.FIELD_SALES),

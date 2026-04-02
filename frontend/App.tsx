@@ -6,6 +6,7 @@ import { LoginPage } from './components/LoginPage';
 import { AgentDashboard } from './components/AgentDashboard';
 import { QualifierDashboard } from './components/QualifierDashboard';
 import { QualifierLeadsPage } from './components/QualifierLeadsPage';
+import { SpecialQualifierSheetsPage } from './components/SpecialQualifierSheetsPage';
 import { FieldSalesDashboard } from './components/FieldSalesDashboard';
 import { AppointmentsPage } from './components/AppointmentsPage';
 import { TasksPage } from './components/TasksPage';
@@ -21,6 +22,7 @@ import { DataQualityPage } from './components/admin/DataQualityPage';
 import { AuditTrailPage } from './components/admin/AuditTrailPage';
 import { AdminSettingsPage } from './components/admin/AdminSettingsPage';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
+import { GoogleCalendarEmbed } from './components/GoogleCalendarEmbed';
 
 function SettingsPage() {
   return (
@@ -38,42 +40,8 @@ function SettingsPage() {
 }
 
 function CalendarPage() {
-  const embedUrl = import.meta.env.VITE_GOOGLE_CALENDAR_EMBED_URL;
-
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Google Calendar</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          {embedUrl
-            ? 'Your calendar is embedded below.'
-            : 'Add VITE_GOOGLE_CALENDAR_EMBED_URL to .env to show your Google Calendar here.'}
-        </p>
-      </CardHeader>
-      <CardContent>
-        {embedUrl ? (
-          <div className="rounded-lg border overflow-hidden bg-white" style={{ minHeight: 600 }}>
-            <iframe
-              src={embedUrl}
-              style={{ border: 0, width: '100%', height: 600 }}
-              frameBorder="0"
-              scrolling="no"
-              title="Google Calendar"
-            />
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-            <p className="mb-2">To embed Google Calendar:</p>
-            <ol className="text-left max-w-md mx-auto space-y-1 list-decimal list-inside">
-              <li>Open Google Calendar → Settings (gear) → Select your calendar</li>
-              <li>Under &quot;Integrate calendar&quot;, copy the &quot;Embed code&quot; iframe src URL</li>
-              <li>Add to frontend/.env: <code className="bg-muted px-1 rounded">VITE_GOOGLE_CALENDAR_EMBED_URL=https://calendar.google.com/calendar/embed?src=YOUR_CALENDAR_ID</code></li>
-              <li>Restart the dev server</li>
-            </ol>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <GoogleCalendarEmbed title="Google Calendar" description="sales@margav.energy — shared sales appointments." />
   );
 }
 
@@ -134,6 +102,8 @@ function AppContent() {
         }
       case 'leads':
         return user.role === 'QUALIFIER' ? <QualifierLeadsPage /> : <AgentDashboard />;
+      case 'sheet-leads':
+        return user.role === 'QUALIFIER' ? <SpecialQualifierSheetsPage /> : <AgentDashboard />;
       case 'appointments':
         return <AppointmentsPage />;
       case 'opportunities':

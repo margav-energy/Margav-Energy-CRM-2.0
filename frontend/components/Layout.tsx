@@ -77,7 +77,9 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
               </Avatar>
               <div className="flex flex-col items-end">
                 <span className="text-sm font-medium">{user?.fullName}</span>
-                <span className="text-xs text-muted-foreground">{user?.role.replace('_', ' ')}</span>
+                <span className="text-xs text-muted-foreground">
+                  {user?.usernameDisplay ?? user?.username} · {user?.role.replace('_', ' ')}
+                </span>
               </div>
               <Button variant="ghost" size="icon" onClick={logout} title="Sign out">
                 <LogOut className="w-4 h-4" />

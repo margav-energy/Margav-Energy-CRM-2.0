@@ -13,8 +13,8 @@ export async function getAppointmentById(req: Request, res: Response): Promise<v
 }
 
 export async function createAppointment(req: Request, res: Response): Promise<void> {
-  const appointment = await appointmentsService.createAppointment(req.body);
-  sendSuccess(res, appointment, 201);
+  const result = await appointmentsService.createAppointment(req.body);
+  sendSuccess(res, { ...result.appointment, calendarSynced: result.calendarSynced }, 201);
 }
 
 export async function updateAppointment(req: Request, res: Response): Promise<void> {

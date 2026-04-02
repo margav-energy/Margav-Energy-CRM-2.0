@@ -165,7 +165,7 @@ export async function getAdminOverview() {
       stage: 'Contacted',
       count: await prisma.lead.count({
         where: {
-          status: { in: ['CONTACTED', 'INTERESTED', 'QUALIFYING', 'QUALIFIED', 'APPOINTMENT_SET', 'NOT_INTERESTED', 'DEPOSITION'] },
+          status: { in: ['CONTACTED', 'INTERESTED', 'QUALIFYING', 'QUALIFIED', 'SOLD', 'APPOINTMENT_SET', 'NOT_INTERESTED', 'DEPOSITION'] },
           createdAt: { gte: month },
         },
       }),
@@ -174,7 +174,7 @@ export async function getAdminOverview() {
       stage: 'Qualified',
       count: await prisma.lead.count({
         where: {
-          status: { in: ['QUALIFIED', 'APPOINTMENT_SET'] },
+          status: { in: ['QUALIFIED', 'SOLD', 'APPOINTMENT_SET'] },
           createdAt: { gte: month },
         },
       }),
@@ -364,6 +364,7 @@ export async function getAdminOverviewCharts(period: AdminChartPeriod) {
               'INTERESTED',
               'QUALIFYING',
               'QUALIFIED',
+              'SOLD',
               'APPOINTMENT_SET',
               'NOT_INTERESTED',
               'DEPOSITION',
@@ -377,7 +378,7 @@ export async function getAdminOverviewCharts(period: AdminChartPeriod) {
       stage: 'Qualified',
       count: await prisma.lead.count({
         where: {
-          status: { in: ['QUALIFIED', 'APPOINTMENT_SET'] },
+          status: { in: ['QUALIFIED', 'SOLD', 'APPOINTMENT_SET'] },
           createdAt: { gte: from },
         },
       }),
@@ -686,6 +687,7 @@ export async function getAdminUsers() {
     select: {
       id: true,
       fullName: true,
+      username: true,
       email: true,
       role: true,
       createdAt: true,
@@ -696,6 +698,7 @@ export async function getAdminUsers() {
   return users.map((u) => ({
     id: u.id,
     fullName: u.fullName,
+    username: u.username,
     email: u.email,
     role: u.role,
     status: 'active' as const,

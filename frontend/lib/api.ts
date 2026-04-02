@@ -51,19 +51,35 @@ export async function getNotifications() {
 }
 
 // Auth
-export async function login(email: string, password: string) {
-  const { data } = await request<{ user: { id: string; fullName: string; email: string; role: string }; token: string }>(
-    '/auth/login',
-    {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    }
-  );
+export async function login(username: string, password: string) {
+  const { data } = await request<{
+    user: {
+      id: string;
+      fullName: string;
+      username: string;
+      usernameDisplay?: string;
+      email: string | null;
+      role: string;
+      specialSheetQualifier?: boolean;
+    };
+    token: string;
+  }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
   return data;
 }
 
 export async function getMe() {
-  const { data } = await request<{ id: string; fullName: string; email: string; role: string }>('/auth/me');
+  const { data } = await request<{
+    id: string;
+    fullName: string;
+    username: string;
+    usernameDisplay?: string;
+    email: string | null;
+    role: string;
+    specialSheetQualifier?: boolean;
+  }>('/auth/me');
   return data;
 }
 
@@ -275,15 +291,37 @@ export async function getAgentSummary(weeks = 4) {
 }
 
 // Leads
-export async function getLeads(params?: { page?: number; pageSize?: number; status?: string; search?: string }) {
+export async function getLeads(params?: {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  search?: string;
+  /** Comma-separated e.g. Rattle,Leadwise */
+  sources?: string;
+  assignedQualifierId?: string;
+}) {
   const q = new URLSearchParams();
   if (params?.page) q.set('page', String(params.page));
   if (params?.pageSize) q.set('pageSize', String(params.pageSize));
   if (params?.status) q.set('status', params.status);
   if (params?.search) q.set('search', params.search);
+  if (params?.sources) q.set('sources', params.sources);
+  if (params?.assignedQualifierId) q.set('assignedQualifierId', params.assignedQualifierId);
   const { data } = await request<{ items: unknown[]; total: number; page: number; pageSize: number }>(
     `/leads?${q.toString()}`
   );
+  return data;
+}
+
+/** Sync Rattle + Leadwise Google Sheets into CRM (special qualifier or admin). */
+export async function syncGoogleSheetsLeads() {
+  const { data } = await request<{
+    created: number;
+    updated: number;
+    skipped: number;
+    deleted: number;
+    errors: string[];
+  }>('/leads/sync/sheets', { method: 'POST' });
   return data;
 }
 
@@ -303,8 +341,12 @@ export async function updateLeadStatus(leadId: string, status: string, note?: st
 export async function qualifyLead(
   leadId: string,
   body: Record<string, unknown>
-): Promise<{ lead: unknown; calendar_synced?: boolean }> {
-  const { data } = await request<{ lead: unknown; calendar_synced?: boolean }>(
+): Promise<{ lead: unknown; appointment_created?: boolean; calendar_synced?: boolean }> {
+  const { data } = await request<{
+    lead: unknown;
+    appointment_created?: boolean;
+    calendar_synced?: boolean;
+  }>(
     `/leads/${leadId}/qualify`,
     {
       method: 'POST',
@@ -432,7 +474,9 @@ export async function updateOpportunity(id: string, body: { stage?: string; owne
 
 // Team
 export async function getFieldSalesReps() {
-  const { data } = await request<Array<{ id: string; fullName: string; email: string }>>('/team/field-sales-reps');
+  const { data } = await request<Array<{ id: string; fullName: string; username: string; email: string | null }>>(
+    '/team/field-sales-reps'
+  );
   return data;
 }
 

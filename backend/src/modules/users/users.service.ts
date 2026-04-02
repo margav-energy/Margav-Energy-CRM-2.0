@@ -2,10 +2,12 @@ import bcrypt from 'bcrypt';
 import { prisma } from '../../db';
 import { AppError } from '../../middleware/errorHandler';
 import { CreateUserInput, UpdateUserInput, ListUsersQuery } from './users.validation';
+import { allocateUsername } from '../../utils/username';
 
 const userSelect = {
   id: true,
   fullName: true,
+  username: true,
   email: true,
   role: true,
   createdAt: true,
@@ -19,9 +21,11 @@ export async function listUsers(query: ListUsersQuery) {
   const where: Record<string, unknown> = {};
   if (role) where.role = role;
   if (search) {
+    const s = search.trim();
     where.OR = [
-      { fullName: { contains: search, mode: 'insensitive' as const } },
-      { email: { contains: search, mode: 'insensitive' as const } },
+      { fullName: { contains: s, mode: 'insensitive' as const } },
+      { username: { contains: s, mode: 'insensitive' as const } },
+      { email: { contains: s, mode: 'insensitive' as const } },
     ];
   }
 
@@ -40,18 +44,24 @@ export async function listUsers(query: ListUsersQuery) {
 }
 
 export async function createUser(input: CreateUserInput) {
-  const existing = await prisma.user.findUnique({
-    where: { email: input.email.toLowerCase() },
-  });
-  if (existing) {
-    throw new AppError('Email already registered', 409);
+  const fullName = `${input.firstName} ${input.lastName}`.trim();
+  const username = await allocateUsername(input.firstName, input.lastName);
+  const email = input.email?.trim().toLowerCase();
+  if (email) {
+    const existing = await prisma.user.findUnique({
+      where: { email },
+    });
+    if (existing) {
+      throw new AppError('Email already registered', 409);
+    }
   }
 
   const passwordHash = await bcrypt.hash(input.password, 12);
   const user = await prisma.user.create({
     data: {
-      fullName: input.fullName,
-      email: input.email.toLowerCase(),
+      fullName,
+      username,
+      email: email ?? null,
       passwordHash,
       role: input.role,
     },
@@ -82,12 +92,25 @@ export async function updateUser(id: string, input: UpdateUserInput) {
   const data: Record<string, unknown> = {};
 
   if (input.fullName !== undefined) data.fullName = input.fullName;
-  if (input.email !== undefined) {
+  if (input.username !== undefined) {
+    const canonical = input.username.trim().toLowerCase();
     const duplicate = await prisma.user.findFirst({
-      where: { email: input.email.toLowerCase(), NOT: { id } },
+      where: { username: canonical, NOT: { id } },
     });
-    if (duplicate) throw new AppError('Email already in use', 409);
-    data.email = input.email.toLowerCase();
+    if (duplicate) throw new AppError('Username already in use', 409);
+    data.username = canonical;
+  }
+  if (input.email !== undefined) {
+    const emailVal = input.email.trim().toLowerCase();
+    if (emailVal === '') {
+      data.email = null;
+    } else {
+      const duplicate = await prisma.user.findFirst({
+        where: { email: emailVal, NOT: { id } },
+      });
+      if (duplicate) throw new AppError('Email already in use', 409);
+      data.email = emailVal;
+    }
   }
   if (input.role !== undefined) data.role = input.role;
   if (input.password !== undefined) {

@@ -92,6 +92,7 @@ export function UserManagementPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
+                  <TableHead>Username</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
@@ -106,7 +107,8 @@ export function UserManagementPage() {
                 {(loading ? [] : filteredUsers).map((user) => (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.fullName}</TableCell>
-                    <TableCell>{user.email}</TableCell>
+                    <TableCell className="font-mono text-sm">{user.username}</TableCell>
+                    <TableCell>{user.email ?? '—'}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{user.role.replace('_', ' ')}</Badge>
                     </TableCell>

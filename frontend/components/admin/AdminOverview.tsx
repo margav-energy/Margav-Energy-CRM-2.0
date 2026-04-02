@@ -32,6 +32,7 @@ const STATUS_COLORS: Record<string, string> = {
   INTERESTED: '#34d399',
   QUALIFYING: '#22c55e',
   QUALIFIED: '#10b981',
+  SOLD: '#d97706',
   APPOINTMENT_SET: '#059669',
   NOT_INTERESTED: '#94a3b8',
   DEPOSITION: '#64748b',

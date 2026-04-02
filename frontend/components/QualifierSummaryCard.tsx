@@ -8,6 +8,8 @@ interface QualifierSummaryCardProps {
   change?: string;
   changeType?: 'positive' | 'negative' | 'neutral';
   variant?: 'amber' | 'emerald' | 'blue' | 'violet' | 'slate' | 'rose';
+  /** Makes the card keyboard-focusable and opens the queue / drill-down when set */
+  onClick?: () => void;
 }
 
 const CARD_STYLES: Record<string, { card: string; header: string }> = {
@@ -44,14 +46,30 @@ export function QualifierSummaryCard({
   change,
   changeType = 'neutral',
   variant = 'amber',
+  onClick,
 }: QualifierSummaryCardProps) {
   const styles = CARD_STYLES[variant] ?? CARD_STYLES.amber;
   const changeColor =
     changeType === 'positive' ? 'text-emerald-700' : changeType === 'negative' ? 'text-rose-700' : 'text-slate-600';
+  const interactive = Boolean(onClick);
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border-2 transition-all duration-200 hover:shadow-xl ${styles.card}`}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (!onClick) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className={`relative overflow-hidden rounded-2xl border-2 transition-all duration-200 ${
+        interactive
+          ? 'cursor-pointer hover:shadow-xl hover:brightness-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400'
+          : 'hover:shadow-xl'
+      } ${styles.card}`}
     >
       <div className={`relative px-4 py-3 border-b border-white/30 overflow-hidden ${styles.header}`}>
         <div className="absolute inset-0 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />

@@ -21,21 +21,21 @@ export async function getFunnelReport(monthsBack: number) {
     {
       name: 'Contacted',
       value: leads.filter((l) =>
-        ['CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'DEPOSITION', 'QUALIFYING', 'QUALIFIED', 'NOT_QUALIFIED', 'APPOINTMENT_SET'].includes(l.status)
+        ['CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'DEPOSITION', 'QUALIFYING', 'QUALIFIED', 'SOLD', 'NOT_QUALIFIED', 'APPOINTMENT_SET'].includes(l.status)
       ).length,
       key: 'contacted',
     },
     {
       name: 'Interested',
       value: leads.filter((l) =>
-        ['INTERESTED', 'QUALIFYING', 'QUALIFIED', 'APPOINTMENT_SET'].includes(l.status)
+        ['INTERESTED', 'QUALIFYING', 'QUALIFIED', 'SOLD', 'APPOINTMENT_SET'].includes(l.status)
       ).length,
       key: 'interested',
     },
     {
       name: 'Qualified',
       value: leads.filter((l) =>
-        ['QUALIFIED', 'APPOINTMENT_SET'].includes(l.status)
+        ['QUALIFIED', 'SOLD', 'APPOINTMENT_SET'].includes(l.status)
       ).length,
       key: 'qualified',
     },
@@ -282,7 +282,7 @@ export async function getWeeklyFunnelReport(weeksBack = 1) {
 
   const total = leads.length;
   const contacted = leads.filter((l) =>
-    ['CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'QUALIFYING', 'QUALIFIED', 'NOT_QUALIFIED', 'APPOINTMENT_SET', 'QUALIFIER_CALLBACK', 'NO_CONTACT'].includes(l.status)
+    ['CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'QUALIFYING', 'QUALIFIED', 'SOLD', 'NOT_QUALIFIED', 'APPOINTMENT_SET', 'QUALIFIER_CALLBACK', 'NO_CONTACT'].includes(l.status)
   ).length;
   const callback = leads.filter((l) => l.status === LeadStatus.QUALIFIER_CALLBACK).length;
   const appointmentsBooked = leads.filter((l) => l.status === LeadStatus.APPOINTMENT_SET).length;
@@ -365,6 +365,7 @@ export async function getAgentOutcomesReport(agentId: string, weeksBack = 4) {
     DEPOSITION: 'Deposition',
     QUALIFYING: 'Sent to Qualifier',
     QUALIFIED: 'Qualified',
+    SOLD: 'Sold',
     NOT_QUALIFIED: 'DNQ',
     APPOINTMENT_SET: 'Appointment Set',
     NO_CONTACT: 'No Contact',
@@ -376,7 +377,7 @@ export async function getAgentOutcomesReport(agentId: string, weeksBack = 4) {
     byStatus[lead.status] = (byStatus[lead.status] || 0) + 1;
   }
 
-  const order = ['NEW', 'CONTACTED', 'INTERESTED', 'QUALIFYING', 'QUALIFIED', 'APPOINTMENT_SET', 'QUALIFIER_CALLBACK', 'NO_CONTACT', 'NOT_INTERESTED', 'DEPOSITION', 'NOT_QUALIFIED'];
+  const order = ['NEW', 'CONTACTED', 'INTERESTED', 'QUALIFYING', 'QUALIFIED', 'SOLD', 'APPOINTMENT_SET', 'QUALIFIER_CALLBACK', 'NO_CONTACT', 'NOT_INTERESTED', 'DEPOSITION', 'NOT_QUALIFIED'];
   const result: Array<{ name: string; value: number; fill: string }> = [];
   const palette = ['#3b82f6', '#f59e0b', '#22c55e', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899', '#64748b', '#ef4444', '#f97316', '#94a3b8'];
   let i = 0;

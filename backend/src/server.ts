@@ -16,6 +16,20 @@ const server = app.listen(config.port, () => {
       ? '[API] Lead import enabled (POST /api/leads/import with x-api-key)'
       : '[API] Lead import disabled — set LEAD_IMPORT_API_KEY in .env'
   );
+  const gs = config.googleSheets;
+  const sheetsOAuth =
+    Boolean(gs.oauthClientId && gs.oauthClientSecret && gs.oauthRefreshToken);
+  const sheetsKey = Boolean(gs.apiKey);
+  const sheetsSa = Boolean(gs.serviceAccountJson || gs.serviceAccountJsonB64);
+  console.log(
+    sheetsOAuth
+      ? '[Sheets] OAuth configured (Rattle/Leadwise sync)'
+      : sheetsKey
+        ? '[Sheets] API key configured (public sheets only)'
+        : sheetsSa
+          ? '[Sheets] Service account JSON configured'
+          : '[Sheets] NOT configured — set GOOGLE_SHEETS_OAUTH_* (or API key / service account). Restart server after editing .env'
+  );
   if (config.smsJourneyTestMode) {
     console.log(
       '[SMS Journey] TEST MODE: task delays use seconds (not minutes); see SMS_JOURNEY_TEST_* in .env'

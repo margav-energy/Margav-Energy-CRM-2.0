@@ -1,6 +1,11 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-const appointmentStatusEnum = z.enum(['SCHEDULED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']);
+const appointmentStatusEnum = z.enum([
+  "SCHEDULED",
+  "COMPLETED",
+  "CANCELLED",
+  "NO_SHOW",
+]);
 
 export const appointmentIdParamSchema = z.object({
   id: z.string().cuid(),
@@ -35,5 +40,7 @@ export const listAppointmentsQuerySchema = z.object({
 
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;
 export type UpdateAppointmentInput = z.infer<typeof updateAppointmentSchema>;
-export type UpdateAppointmentStatusInput = z.infer<typeof updateAppointmentStatusSchema>;
+export type UpdateAppointmentStatusInput = z.infer<
+  typeof updateAppointmentStatusSchema
+>;
 export type ListAppointmentsQuery = z.infer<typeof listAppointmentsQuerySchema>;

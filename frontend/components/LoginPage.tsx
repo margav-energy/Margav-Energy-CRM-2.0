@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth-context';
 
 export function LoginPage() {
   const { login, error } = useAuth();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -15,7 +15,7 @@ export function LoginPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await login(email, password);
+      await login(username.trim(), password);
     } catch {
       // Error shown via context
     } finally {
@@ -40,22 +40,27 @@ export function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="you@margav.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="username"
+                type="text"
+                autoComplete="username"
+                placeholder="e.g. JohnD or admin"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
                 className="mt-1"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Use your assigned username (first name + first letter of last name, e.g. JohnD). Not case-sensitive.
+              </p>
             </div>
             <div>
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -78,7 +83,7 @@ export function LoginPage() {
             </Button>
           </form>
           <p className="text-xs text-muted-foreground mt-4 text-center">
-            Use your Margav CRM credentials. Admin: admin@margav.com
+            Use your Margav CRM credentials. Admin: username <code className="bg-muted px-1 rounded">admin</code>
           </p>
         </CardContent>
       </Card>

@@ -1,4 +1,4 @@
-import { BarChart3, Calendar, Home, Users, Target, CheckSquare, Settings, Shield, MessageSquare, Database, History } from 'lucide-react';
+import { BarChart3, Calendar, Home, Users, Target, CheckSquare, Settings, Shield, MessageSquare, Database, History, TableProperties } from 'lucide-react';
 import type { Role } from './auth-context';
 
 export interface NavItem {
@@ -7,6 +7,14 @@ export interface NavItem {
   icon: typeof Home;
   roles: Role[];
 }
+
+/** Google Sheets (Rattle + Leadwise) — all qualifiers see the list; sync runs for the designated sheet qualifier */
+export const SHEET_QUALIFIER_NAV_ITEM: NavItem = {
+  id: 'sheet-leads',
+  label: 'Rattle & Leadwise',
+  icon: TableProperties,
+  roles: ['QUALIFIER'],
+};
 
 export const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: Home, roles: ['AGENT', 'QUALIFIER', 'FIELD_SALES'] },
@@ -35,7 +43,16 @@ export function getNavItemsForRole(role: Role): NavItem[] {
   if (role === 'ADMIN') {
     return ADMIN_NAV_ITEMS;
   }
-  return ALL_NAV_ITEMS.filter((item) => item.roles.includes(role));
+  let items = ALL_NAV_ITEMS.filter((item) => item.roles.includes(role));
+  if (role === 'QUALIFIER') {
+    const leadsIdx = items.findIndex((i) => i.id === 'leads');
+    if (leadsIdx >= 0) {
+      items = [...items.slice(0, leadsIdx + 1), SHEET_QUALIFIER_NAV_ITEM, ...items.slice(leadsIdx + 1)];
+    } else {
+      items = [SHEET_QUALIFIER_NAV_ITEM, ...items];
+    }
+  }
+  return items;
 }
 
 export function getDefaultPageForRole(role: Role): string {

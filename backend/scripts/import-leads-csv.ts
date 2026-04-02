@@ -38,7 +38,7 @@ const STATUS_MAP: Record<string, string> = {
   'contacted': 'CONTACTED',
   'qualified': 'QUALIFIED',
   'unqualified': 'NOT_QUALIFIED',
-  'closed won': 'QUALIFIED',
+  'closed won': 'SOLD',
   'closed lost': 'NOT_INTERESTED',
   'follow-up': 'QUALIFIER_CALLBACK',
   'follow up': 'QUALIFIER_CALLBACK',

@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
@@ -43,6 +44,7 @@ function mergeNotes(agentNotes: string, qualifierNotes: string): string {
 
 const STATUS_MAP: Record<string, string> = {
   qualified: 'QUALIFIED',
+  sold: 'SOLD',
   appointment_set: 'APPOINTMENT_SET',
   no_contact: 'CONTACTED',
   not_interested: 'NOT_INTERESTED',
@@ -78,6 +80,7 @@ interface QualifyLeadFormProps {
 
 const STATUS_OPTIONS = [
   { value: 'qualified', label: 'Qualified', color: 'text-green-600' },
+  { value: 'sold', label: 'Sold', color: 'text-amber-700' },
   { value: 'appointment_set', label: 'Appointment Set', color: 'text-purple-600' },
   { value: 'no_contact', label: 'No Contact', color: 'text-yellow-600' },
   { value: 'not_interested', label: 'Not Interested', color: 'text-red-600' },
@@ -217,7 +220,9 @@ export function QualifyLeadForm({ lead, open, onClose, onSaved }: QualifyLeadFor
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Review & Qualify Lead</DialogTitle>
-          <p className="text-sm text-muted-foreground">Review lead details and update status for {leadName}</p>
+          <DialogDescription>
+            Review lead details and update status for {leadName}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col md:flex-row gap-6">

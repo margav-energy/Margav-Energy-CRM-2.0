@@ -6,13 +6,18 @@ export type Role = 'ADMIN' | 'AGENT' | 'QUALIFIER' | 'FIELD_SALES';
 export interface User {
   id: string;
   fullName: string;
-  email: string;
+  username: string;
+  /** e.g. JohnD — from backend */
+  usernameDisplay?: string;
+  email?: string | null;
   role: Role;
+  /** Rattle / Leadwise sheet pipeline */
+  specialSheetQualifier?: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string, role?: Role) => Promise<void>;
+  login: (username: string, password: string, role?: Role) => Promise<void>;
   logout: () => void;
   setUser: (user: User | null) => void;
   error: string | null;
@@ -48,8 +53,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser({
           id: me.id,
           fullName: me.fullName,
-          email: me.email,
+          username: (me as { username: string }).username,
+          usernameDisplay: (me as { usernameDisplay?: string }).usernameDisplay,
+          email: (me as { email?: string | null }).email,
           role: me.role as Role,
+          specialSheetQualifier: (me as { specialSheetQualifier?: boolean }).specialSheetQualifier,
         });
       })
       .catch(() => {
@@ -59,16 +67,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setLoading(false));
   }, [setUser]);
 
-  const login = useCallback(async (email: string, password: string, role?: Role) => {
+  const login = useCallback(async (username: string, password: string, role?: Role) => {
     setError(null);
     try {
-      const { user: u, token } = await api.login(email, password);
+      const { user: u, token } = await api.login(username, password);
       localStorage.setItem('margav_token', token);
       setUser({
         id: u.id,
         fullName: u.fullName,
+        username: u.username,
+        usernameDisplay: u.usernameDisplay,
         email: u.email,
         role: (role ?? u.role) as Role,
+        specialSheetQualifier: u.specialSheetQualifier,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
