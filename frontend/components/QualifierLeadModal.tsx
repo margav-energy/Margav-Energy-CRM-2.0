@@ -93,6 +93,17 @@ function inferRoofType(agentType?: string, qualifierType?: string): string {
   return '';
 }
 
+const BOILER_NOTES_MARK = '--- BOILER LEAD INFORMATION ---';
+
+function extractBoilerAgentNoteLines(notes: string): string[] {
+  const i = notes.indexOf(BOILER_NOTES_MARK);
+  if (i < 0) return [];
+  let rest = notes.slice(i + BOILER_NOTES_MARK.length).trim();
+  const stop = rest.search(/\n--- /);
+  if (stop >= 0) rest = rest.slice(0, stop);
+  return rest.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
 // Map backend LeadStatus back to qualifier form status
 function toQualifierStatus(backendStatus?: string): string {
   const map: Record<string, string> = {
@@ -146,6 +157,7 @@ export interface QualifierLead {
   available3WorkingDays?: boolean | null;
   appointments?: Array<{ scheduledAt: string; fieldSalesRep?: { fullName?: string } }>;
   updatedAt?: string;
+  productLine?: string | null;
 }
 
 export interface QualifierLeadModalProps {
@@ -332,6 +344,11 @@ export function QualifierLeadModal({ lead, open, onClose, onSuccess }: Qualifier
     }
   };
 
+  const boilerAgentLines = React.useMemo(
+    () => extractBoilerAgentNoteLines(lead?.notes || ''),
+    [lead?.notes]
+  );
+
   if (!open) return null;
 
   const leadName = `${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim();
@@ -347,11 +364,32 @@ export function QualifierLeadModal({ lead, open, onClose, onSuccess }: Qualifier
               <p className="text-sm text-gray-600 mt-1">
                 Qualifier: {user?.fullName || 'You'} | Agent: {agentName}
               </p>
+              <p className="text-sm text-gray-600 mt-1">
+                Product line:{' '}
+                <span className="font-medium text-gray-800">
+                  {lead.productLine === 'SOLAR'
+                    ? 'Solar'
+                    : lead.productLine === 'HEATING'
+                      ? 'Heating (boilers)'
+                      : 'Not set'}
+                </span>
+              </p>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">
               ×
             </button>
           </div>
+
+          {boilerAgentLines.length > 0 ? (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
+              <h4 className="font-semibold text-gray-900 mb-2">Boiler lead sheet (from agent)</h4>
+              <ul className="text-sm text-gray-700 space-y-1 list-disc pl-5">
+                {boilerAgentLines.map((line, idx) => (
+                  <li key={idx}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           {/* Agent Data Summary */}
           {agentName && agentName !== 'Unknown' && (

@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { google } from 'googleapis';
 import { JWT, OAuth2Client } from 'google-auth-library';
-import { LeadStatus } from '@prisma/client';
+import { LeadStatus, Role } from '@prisma/client';
 import { prisma } from '../../db';
 import { config } from '../../config';
 import { AppError } from '../../middleware/errorHandler';
@@ -136,6 +136,40 @@ interface ParsedSheetRow {
   addressLine1?: string;
 }
 
+const SOURCE_ASSIGNEE: Record<'Rattle' | 'Leadwise', { username: string; fullName: string }> = {
+  Rattle: { username: 'louis', fullName: 'Louis' },
+  Leadwise: { username: 'ella', fullName: 'Ella' },
+};
+
+const SOURCE_QUALIFIER: Record<'Rattle' | 'Leadwise', { username: string; fullName: string }> = {
+  Rattle: { username: 'louis', fullName: 'Louis' },
+  Leadwise: { username: 'ella', fullName: 'Ella' },
+};
+
+async function resolveSourceAssignedAgentId(source: 'Rattle' | 'Leadwise'): Promise<string | null> {
+  const target = SOURCE_ASSIGNEE[source];
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [{ username: { equals: target.username, mode: 'insensitive' } }, { fullName: target.fullName }],
+      role: { in: [Role.AGENT, Role.FIELD_SALES] },
+    },
+    select: { id: true },
+  });
+  return user?.id ?? null;
+}
+
+async function resolveSourceAssignedQualifierId(source: 'Rattle' | 'Leadwise'): Promise<string | null> {
+  const target = SOURCE_QUALIFIER[source];
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [{ username: { equals: target.username, mode: 'insensitive' } }, { fullName: target.fullName }],
+      role: Role.QUALIFIER,
+    },
+    select: { id: true },
+  });
+  return user?.id ?? null;
+}
+
 function digitsOnly(phone: string): string {
   return phone.replace(/\D/g, '');
 }
@@ -192,13 +226,33 @@ function parseLeadSheetDate(s: string): Date | undefined {
   return Number.isNaN(ms) ? undefined : new Date(ms);
 }
 
-function mapDispositionToLeadStatus(disposition: string, appointmentOutcome?: string): LeadStatus | undefined {
+function mapDispositionToLeadStatus(
+  disposition: string,
+  outcome?: string,
+  appointmentOutcome?: string
+): LeadStatus | undefined {
   const d = disposition.trim().toLowerCase();
+  const o = (outcome ?? '').trim().toLowerCase();
   const ao = (appointmentOutcome ?? '').trim().toLowerCase();
-  if (ao.includes('appt not sat') || ao.includes('no show')) {
+
+  // Exact / near-exact values from sheet feeds
+  if (d === 'callback') return LeadStatus.QUALIFIER_CALLBACK;
+  if (d === 'appointment booked') return LeadStatus.APPOINTMENT_SET;
+  if (d === 'not interested') return LeadStatus.NOT_INTERESTED;
+  if (d === 'dnq' || d === 'already has solar' || d === 'wrong number') return LeadStatus.NOT_QUALIFIED;
+  if (d === 'no answer') return LeadStatus.NO_CONTACT;
+
+  if (ao === 'appt not sat' || ao.includes('appt not sat') || ao.includes('no show')) {
     return LeadStatus.QUALIFIER_CALLBACK;
   }
-  if (!d && !ao) return undefined;
+
+  if (o === 'sold') return LeadStatus.SOLD;
+  if (o === 'blow out' || o === 'blowout') return LeadStatus.NOT_INTERESTED;
+  if (o === 'sale in progress' || o === 'high % to close') return LeadStatus.QUALIFIED;
+  if (o === 'pitch & miss' || o === 'unable to dem' || o === 'no close on day') return LeadStatus.DEPOSITION;
+  if (o === 'sweep') return LeadStatus.QUALIFIED;
+
+  if (!d && !o && !ao) return undefined;
   if (d.includes('not interested')) return LeadStatus.NOT_INTERESTED;
   if (d.includes('appointment') && (d.includes('book') || d.includes('set'))) {
     return LeadStatus.APPOINTMENT_SET;
@@ -206,13 +260,23 @@ function mapDispositionToLeadStatus(disposition: string, appointmentOutcome?: st
   if (d.includes('sold') || d.includes('closed won') || d.includes('sale closed')) {
     return LeadStatus.SOLD;
   }
+  if (d.includes('dnq') || d.includes('wrong number')) return LeadStatus.NOT_QUALIFIED;
+  if (d.includes('already has solar')) return LeadStatus.NOT_QUALIFIED;
   if (d.includes('qualified') && !d.includes('not ')) return LeadStatus.QUALIFIED;
   if (d.includes('qualifying') || d.includes('sent to qualify')) return LeadStatus.QUALIFYING;
   if (d.includes('callback') || d.includes('follow up') || d.includes('follow-up')) {
     return LeadStatus.QUALIFIER_CALLBACK;
   }
-  if (d.includes('no contact')) return LeadStatus.NO_CONTACT;
+  if (d.includes('no answer') || d.includes('no contact')) return LeadStatus.NO_CONTACT;
   if (d.includes('deposit')) return LeadStatus.DEPOSITION;
+  if (o.includes('sold')) return LeadStatus.SOLD;
+  if (o.includes('blow out') || o.includes('blowout')) return LeadStatus.NOT_INTERESTED;
+  if (o.includes('sale in progress') || o.includes('high % to close')) return LeadStatus.QUALIFIED;
+  if (o.includes('pitch') || o.includes('unable to dem') || o.includes('no close on day')) {
+    return LeadStatus.DEPOSITION;
+  }
+  if (o.includes('sweep')) return LeadStatus.QUALIFIED;
+  if (ao.includes('appt not sat') || ao.includes('no show')) return LeadStatus.QUALIFIER_CALLBACK;
   return undefined;
 }
 
@@ -265,7 +329,7 @@ function parseRattleRow(row: string[], headerMap: Record<string, number>): Parse
     cycles ? `Cycles: ${cycles}` : '',
   ]);
 
-  const leadStatus = mapDispositionToLeadStatus(disposition, appointmentOutcome);
+  const leadStatus = mapDispositionToLeadStatus(disposition, outcome, appointmentOutcome);
   const sheetCreatedAt = parseLeadSheetDate(dateStr);
 
   return {
@@ -332,7 +396,7 @@ function parseLeadwiseRow(row: string[], headerMap: Record<string, number>): Par
     comments,
   ]);
 
-  const leadStatus = mapDispositionToLeadStatus(disposition, appointmentOutcome);
+  const leadStatus = mapDispositionToLeadStatus(disposition, undefined, appointmentOutcome);
   const sheetCreatedAt = parseLeadSheetDate(timestampStr);
 
   return {
@@ -418,6 +482,9 @@ export async function syncGoogleSheetsToLeads(qualifierUserId: string): Promise<
       }
       const headers = (rows[0] || []).map((c) => String(c ?? ''));
       const headerMap = buildHeaderMap(headers);
+      const sourceAssignedAgentId = await resolveSourceAssignedAgentId(feed.source as 'Rattle' | 'Leadwise');
+      const sourceAssignedQualifierId =
+        (await resolveSourceAssignedQualifierId(feed.source as 'Rattle' | 'Leadwise')) ?? qualifierUserId;
 
       for (let i = 1; i < rows.length; i++) {
         const row = (rows[i] || []).map((c) => String(c ?? ''));
@@ -462,8 +529,8 @@ export async function syncGoogleSheetsToLeads(qualifierUserId: string): Promise<
               notes: parsed.notes || existing.notes,
               addressLine1: parsed.addressLine1 ?? existing.addressLine1,
               status: nextStatus,
-              assignedAgentId: null,
-              assignedQualifierId: qualifierUserId,
+              assignedAgentId: sourceAssignedAgentId,
+              assignedQualifierId: sourceAssignedQualifierId,
             },
           });
           if (statusChanged) {
@@ -491,8 +558,8 @@ export async function syncGoogleSheetsToLeads(qualifierUserId: string): Promise<
               source: feed.source,
               originalLeadId,
               status: nextStatus,
-              assignedAgentId: null,
-              assignedQualifierId: qualifierUserId,
+              assignedAgentId: sourceAssignedAgentId,
+              assignedQualifierId: sourceAssignedQualifierId,
               ...(parsed.sheetCreatedAt ? { createdAt: parsed.sheetCreatedAt } : {}),
             },
           });

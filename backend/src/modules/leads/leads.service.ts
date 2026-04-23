@@ -1,4 +1,4 @@
-import { AppointmentStatus, LeadStatus } from '@prisma/client';
+import { AppointmentStatus, LeadStatus, Prisma } from '@prisma/client';
 import { prisma } from '../../db';
 import { AppError } from '../../middleware/errorHandler';
 import {
@@ -10,11 +10,15 @@ import {
   QualifyLeadInput,
   QUALIFIER_STATUS_MAP,
 } from './leads.validation';
-import { sendInitialSms } from '../smsLeadJourney/smsLeadJourney.service';
+import { sendInitialSms, getDefaultQualifierId } from '../smsLeadJourney/smsLeadJourney.service';
+
+/** CRM agent-submitted leads (shared qualifier pool until someone qualifies). */
+const AGENT_SUBMIT_SOURCE = 'Agent';
 
 const leadInclude = {
   assignedAgent: { select: { id: true, fullName: true, email: true } },
   assignedQualifier: { select: { id: true, fullName: true, email: true } },
+  qualifiedByQualifier: { select: { id: true, fullName: true, email: true } },
   assignedFieldSalesRep: { select: { id: true, fullName: true, email: true } },
   duplicateOfLead: { select: { id: true, firstName: true, lastName: true } },
   appointments: {
@@ -24,6 +28,50 @@ const leadInclude = {
     include: { fieldSalesRep: { select: { fullName: true } } },
   },
 };
+
+function isAgentQualifierPoolLead(lead: {
+  source: string | null;
+  status: LeadStatus;
+  assignedQualifierId: string | null;
+}): boolean {
+  return (
+    lead.source === AGENT_SUBMIT_SOURCE &&
+    lead.status === LeadStatus.QUALIFYING &&
+    lead.assignedQualifierId == null
+  );
+}
+
+async function assertQualifierCanAccessLead(
+  lead: {
+    source: string | null;
+    status: LeadStatus;
+    assignedQualifierId: string | null;
+    qualifiedByQualifierId: string | null;
+  },
+  userId: string
+): Promise<void> {
+  if (isAgentQualifierPoolLead(lead)) {
+    return;
+  }
+  if (lead.source === AGENT_SUBMIT_SOURCE && lead.qualifiedByQualifierId === userId) {
+    return;
+  }
+  if (lead.assignedQualifierId === userId) {
+    const me = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true },
+    });
+    const uname = me?.username?.toLowerCase() ?? '';
+    if (uname === 'louis' && lead.source !== 'Rattle' && lead.source !== AGENT_SUBMIT_SOURCE) {
+      throw new AppError('Lead not found', 404);
+    }
+    if (uname === 'ella' && lead.source !== 'Leadwise' && lead.source !== AGENT_SUBMIT_SOURCE) {
+      throw new AppError('Lead not found', 404);
+    }
+    return;
+  }
+  throw new AppError('Lead not found', 404);
+}
 
 export async function listLeads(query: ListLeadsQuery, userId: string, userRole: string) {
   const {
@@ -36,47 +84,90 @@ export async function listLeads(query: ListLeadsQuery, userId: string, userRole:
     assignedQualifierId,
     assignedFieldSalesRepId,
     search,
+    productLine,
   } = query;
   const skip = (page - 1) * pageSize;
 
-  const where: Record<string, unknown> = {};
+  const andParts: Prisma.LeadWhereInput[] = [];
 
-  // Agents only see leads assigned to them
   if (userRole === 'AGENT') {
-    where.assignedAgentId = userId;
+    andParts.push({ assignedAgentId: userId });
+  } else if (userRole === 'QUALIFIER') {
+    const me = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true },
+    });
+    const uname = me?.username?.toLowerCase() ?? '';
+    const assignedSourceFilter =
+      uname === 'louis'
+        ? { in: ['Rattle', AGENT_SUBMIT_SOURCE] }
+        : uname === 'ella'
+          ? { in: ['Leadwise', AGENT_SUBMIT_SOURCE] }
+          : undefined;
+    andParts.push({
+      OR: [
+        {
+          assignedQualifierId: userId,
+          ...(assignedSourceFilter ? { source: assignedSourceFilter } : {}),
+        },
+        {
+          status: LeadStatus.QUALIFYING,
+          source: AGENT_SUBMIT_SOURCE,
+          assignedQualifierId: null,
+        },
+        {
+          source: AGENT_SUBMIT_SOURCE,
+          qualifiedByQualifierId: userId,
+        },
+      ],
+    });
   } else if (assignedAgentId) {
-    where.assignedAgentId = assignedAgentId;
+    andParts.push({ assignedAgentId });
   }
+
   if (assignedQualifierId) {
     if (userRole === 'QUALIFIER' && assignedQualifierId !== userId) {
       throw new AppError('You can only filter by your own qualifier id', 403);
     }
-    where.assignedQualifierId = assignedQualifierId;
+    andParts.push({ assignedQualifierId });
   }
-  if (assignedFieldSalesRepId) where.assignedFieldSalesRepId = assignedFieldSalesRepId;
+  if (assignedFieldSalesRepId) {
+    andParts.push({ assignedFieldSalesRepId });
+  }
 
-  if (status) where.status = status;
+  if (productLine) {
+    andParts.push({ productLine });
+  }
+
+  if (status) {
+    andParts.push({ status });
+  }
   if (sources) {
     const parts = sources
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    if (parts.length === 1) where.source = parts[0];
-    else if (parts.length > 1) where.source = { in: parts };
+    if (parts.length === 1) andParts.push({ source: parts[0] });
+    else if (parts.length > 1) andParts.push({ source: { in: parts } });
   } else if (source) {
-    where.source = source;
+    andParts.push({ source });
   }
 
   if (search) {
     const searchLower = search.toLowerCase();
-    where.OR = [
-      { firstName: { contains: searchLower, mode: 'insensitive' as const } },
-      { lastName: { contains: searchLower, mode: 'insensitive' as const } },
-      { phone: { contains: search } },
-      { email: { contains: searchLower, mode: 'insensitive' as const } },
-      { postcode: { contains: search, mode: 'insensitive' as const } },
-    ];
+    andParts.push({
+      OR: [
+        { firstName: { contains: searchLower, mode: 'insensitive' as const } },
+        { lastName: { contains: searchLower, mode: 'insensitive' as const } },
+        { phone: { contains: search } },
+        { email: { contains: searchLower, mode: 'insensitive' as const } },
+        { postcode: { contains: search, mode: 'insensitive' as const } },
+      ],
+    });
   }
+
+  const where: Prisma.LeadWhereInput =
+    andParts.length === 0 ? {} : andParts.length === 1 ? andParts[0]! : { AND: andParts };
 
   const [leads, total] = await Promise.all([
     prisma.lead.findMany({
@@ -106,6 +197,9 @@ export async function getLeadById(id: string, userId?: string, userRole?: string
   if (userRole === 'AGENT' && lead.assignedAgentId !== userId) {
     throw new AppError('Lead not found', 404);
   }
+  if (userRole === 'QUALIFIER' && userId) {
+    await assertQualifierCanAccessLead(lead, userId);
+  }
 
   return lead;
 }
@@ -114,11 +208,18 @@ export async function createLead(input: CreateLeadInput, userId: string) {
   const assignedAgentId = input.assignedAgentId || userId;
   const { assignedAgentId: _, status: inputStatus, ...rest } = input;
   const initialStatus = (inputStatus as LeadStatus) || LeadStatus.NEW;
+  const isAgentSubmitToPool =
+    initialStatus === LeadStatus.QUALIFYING && rest.source === AGENT_SUBMIT_SOURCE;
+  const assignedQualifierId =
+    initialStatus === LeadStatus.QUALIFYING && !isAgentSubmitToPool
+      ? await getDefaultQualifierId()
+      : undefined;
   const lead = await prisma.lead.create({
     data: {
       ...rest,
       status: initialStatus,
       assignedAgentId,
+      ...(assignedQualifierId ? { assignedQualifierId } : {}),
     },
     include: leadInclude,
   });
@@ -244,9 +345,19 @@ export async function updateLeadStatus(
     throw new AppError('Lead not found', 404);
   }
 
+  const newStatus = input.status as LeadStatus;
+  const data: { status: LeadStatus; assignedQualifierId?: string } = { status: newStatus };
+  const agentPoolQualifying =
+    newStatus === LeadStatus.QUALIFYING &&
+    existing.source === AGENT_SUBMIT_SOURCE &&
+    !existing.assignedQualifierId;
+  if (newStatus === LeadStatus.QUALIFYING && !existing.assignedQualifierId && !agentPoolQualifying) {
+    data.assignedQualifierId = await getDefaultQualifierId();
+  }
+
   const lead = await prisma.lead.update({
     where: { id },
-    data: { status: input.status as LeadStatus },
+    data,
     include: leadInclude,
   });
 
@@ -254,7 +365,7 @@ export async function updateLeadStatus(
     data: {
       leadId: id,
       fromStatus: existing.status,
-      toStatus: input.status as LeadStatus,
+      toStatus: newStatus,
       changedByUserId: userId,
       note: input.note,
     },
@@ -319,6 +430,7 @@ export async function qualifyLead(
   if (!existing) {
     throw new AppError('Lead not found', 404);
   }
+  await assertQualifierCanAccessLead(existing, userId);
 
   const margavStatus = (QUALIFIER_STATUS_MAP[input.status] ?? input.status.toUpperCase().replace(/\s/g, '_')) as LeadStatus;
 
@@ -362,7 +474,12 @@ export async function qualifyLead(
     earnsOver12k: input.earns_over_12k ?? undefined,
     planningToMove5Years: input.planning_to_move_5_years ?? undefined,
     available3WorkingDays: input.available_3_working_days ?? undefined,
+    qualifiedByQualifierId: userId,
   };
+
+  if (!existing.assignedQualifierId) {
+    updateData.assignedQualifierId = userId;
+  }
 
   const lead = await prisma.lead.update({
     where: { id },

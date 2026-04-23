@@ -23,6 +23,7 @@ export function AgentReportsPage() {
     appointmentSet: number;
     inPipeline: number;
     conversionRate: number;
+    byProductLine: { solar: number; heating: number; unspecified: number };
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -53,12 +54,16 @@ export function AgentReportsPage() {
     );
   }
 
+  const plCounts = summary?.byProductLine ?? { solar: 0, heating: 0, unspecified: 0 };
+  const showProductLineBreakdown =
+    summary != null && plCounts.solar + plCounts.heating + plCounts.unspecified > 0;
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">My Lead Performance</h2>
         <p className="text-sm text-muted-foreground">
-          Lead outcomes and performance for leads assigned to you.
+          Lead outcomes and performance for leads you submitted to qualifiers.
         </p>
       </div>
 
@@ -123,13 +128,40 @@ export function AgentReportsPage() {
         </div>
       )}
 
+      {showProductLineBreakdown ? (
+        <Card className="border-amber-200/60 bg-gradient-to-br from-white to-amber-50/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Leads by product line</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Counts for leads you submitted to qualifiers in this period (including unspecified legacy rows).
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-6 text-sm">
+              <div>
+                <span className="text-muted-foreground">Solar</span>
+                <p className="text-xl font-semibold text-amber-900">{plCounts.solar}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Heating (boilers)</span>
+                <p className="text-xl font-semibold text-sky-900">{plCounts.heating}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Unspecified</span>
+                <p className="text-xl font-semibold text-slate-700">{plCounts.unspecified}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
         {/* Lead Outcomes */}
         <Card className="border-green-200/60 bg-gradient-to-br from-white to-green-50/30">
           <CardHeader>
             <CardTitle className="text-green-800">Lead Outcomes</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Status breakdown of your leads.
+              Status breakdown of leads you sent to qualifiers.
             </p>
           </CardHeader>
           <CardContent>

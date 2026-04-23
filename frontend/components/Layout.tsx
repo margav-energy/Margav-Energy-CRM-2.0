@@ -69,9 +69,11 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
           <h1 className="text-xl font-semibold">
             {getPageLabel(currentPage)}
           </h1>
-          <div className="ml-auto flex items-center gap-4">
-            <NotificationDropdown />
-            <div className="flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <div className="mr-1 shrink-0 border-r border-border/70 pr-3 sm:mr-2 sm:pr-5">
+              <NotificationDropdown />
+            </div>
+            <div className="flex min-w-0 items-center gap-2">
               <Avatar>
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>

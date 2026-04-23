@@ -15,6 +15,18 @@ const router = Router();
 router.use(authMiddleware);
 router.use(requireRoles(Role.ADMIN, Role.AGENT, Role.QUALIFIER, Role.FIELD_SALES));
 
+router.get('/threads', async (req: Request, res: Response) => {
+  const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+  const status =
+    req.query.status === 'ACTIVE' || req.query.status === 'ARCHIVED'
+      ? req.query.status
+      : undefined;
+  const limitRaw = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : undefined;
+  const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+  const threads = await smsService.listThreads({ search, status, limit });
+  sendSuccess(res, { items: threads });
+});
+
 router.get('/threads/lead/:leadId', async (req: Request, res: Response) => {
   const thread = await smsService.getOrCreateThread(req.params.leadId);
   sendSuccess(res, thread);

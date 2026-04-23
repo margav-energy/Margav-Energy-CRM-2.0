@@ -22,8 +22,43 @@ import {
   DialogTitle,
 } from './ui/dialog';
 import { createLead, updateLead, updateLeadStatus, createTask, getMe } from '../lib/api';
+import { BoilerLeadSheetSections } from './BoilerLeadSheetSections';
 
 const DETAILED_SECTION = '--- DETAILED LEAD INFORMATION ---';
+const BOILER_SECTION = '--- BOILER LEAD INFORMATION ---';
+
+function extractPreamble(notes: string): string {
+  if (!notes) return '';
+  let cut = notes.length;
+  for (const marker of [DETAILED_SECTION, BOILER_SECTION]) {
+    const i = notes.indexOf(marker);
+    if (i >= 0) cut = Math.min(cut, i);
+  }
+  return notes.slice(0, cut).trim();
+}
+
+function parseSectionContent(notes: string, sectionMarker: string): Record<string, string> {
+  const idx = notes.indexOf(sectionMarker);
+  if (idx < 0) return {};
+  let rest = notes.slice(idx + sectionMarker.length).trim();
+  const nextSolar = rest.indexOf(DETAILED_SECTION);
+  const nextBoiler = rest.indexOf(BOILER_SECTION);
+  let end = rest.length;
+  if (nextSolar >= 0) end = Math.min(end, nextSolar);
+  if (nextBoiler >= 0) end = Math.min(end, nextBoiler);
+  rest = rest.slice(0, end);
+  const data: Record<string, string> = {};
+  for (const line of rest.split('\n')) {
+    const trimmed = line.trim();
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx > 0) {
+      const key = trimmed.slice(0, colonIdx).trim();
+      const value = trimmed.slice(colonIdx + 1).trim();
+      if (key) data[key] = value;
+    }
+  }
+  return data;
+}
 
 /** Yes / No (stored as true | false). Legacy "Unsure" in notes maps to unset. */
 function parseYesNo(val: string): string {
@@ -184,6 +219,177 @@ function buildDetailedNotes(form: Record<string, string>): string {
   return parts.join('\n');
 }
 
+function buildBoilerNotes(form: Record<string, string>): string {
+  const parts: string[] = [];
+  const add = (label: string, val: string) => {
+    if (val) parts.push(`${label}: ${val}`);
+  };
+
+  const gasDual: string[] = [];
+  if (form.boiler_energy_gas === 'true') gasDual.push('Gas');
+  if (form.boiler_energy_dual === 'true') gasDual.push('Dual');
+  add('Boiler Energy Spend', gasDual.join(' & '));
+
+  const ageLabels: Record<string, string> = {
+    '7_10': '7-10 years',
+    over_10: 'Over 10 years',
+    '15_plus': '15+ years',
+    unsure: 'Unsure',
+  };
+  add('Boiler Age', form.boiler_age ? ageLabels[form.boiler_age] || form.boiler_age : '');
+
+  const typeLabels: Record<string, string> = {
+    combi: 'Combi',
+    system: 'System',
+    back: 'Back boiler',
+    unsure: 'Unsure',
+  };
+  add('Boiler Type', form.boiler_type ? typeLabels[form.boiler_type] || form.boiler_type : '');
+
+  const fuelLabels: Record<string, string> = {
+    oil: 'Oil',
+    lpg: 'LPG',
+    gas: 'Gas',
+    electric: 'Electric',
+  };
+  add('Boiler Fuel', form.boiler_fuel ? fuelLabels[form.boiler_fuel] || form.boiler_fuel : '');
+
+  const locs: string[] = [];
+  if (form.boiler_loc_kitchen === 'true') locs.push('Kitchen');
+  if (form.boiler_loc_first_floor === 'true') locs.push('First floor');
+  if (form.boiler_loc_loft === 'true') locs.push('Loft');
+  if (form.boiler_loc_garage === 'true') locs.push('Garage');
+  if (form.boiler_loc_other?.trim()) locs.push(`Other (${form.boiler_loc_other.trim()})`);
+  add('Boiler Location', locs.join(', '));
+
+  add('Boiler Working Properly', formatYesNo(form.boiler_working));
+  add('Boiler Last Serviced', form.boiler_last_serviced?.trim() || '');
+
+  const coverLabels: Record<string, string> = { yes: 'Yes', no: 'No', unknown: 'Unknown' };
+  add('Boiler Cover', form.boiler_cover ? coverLabels[form.boiler_cover] || form.boiler_cover : '');
+  add('Boiler Cover Monthly Cost', form.boiler_cover_monthly_cost?.trim() || '');
+  add('Boiler Cover Supplier', form.boiler_cover_supplier?.trim() || '');
+  add('Boiler Breakdowns (12 months)', form.boiler_breakdowns_12m?.trim() || '');
+
+  const issues: string[] = [];
+  if (form.boiler_issue_noisy === 'true') issues.push('Noisy');
+  if (form.boiler_issue_leaking === 'true') issues.push('Leaking');
+  if (form.boiler_issue_pressure === 'true') issues.push('Pressure issues');
+  if (form.boiler_issue_hot_water === 'true') issues.push('Hot water runs out');
+  if (form.boiler_issue_not_all_rooms === 'true') issues.push('Not heating all rooms');
+  add('Boiler Issues', issues.join(', '));
+
+  const propLabels: Record<string, string> = {
+    detached: 'Detached',
+    semi: 'Semi-detached',
+    terraced: 'Terraced',
+    flat_bungalow: 'Flat/Bungalow',
+  };
+  add(
+    'Boiler Property Type',
+    form.boiler_property_type ? propLabels[form.boiler_property_type] || form.boiler_property_type : ''
+  );
+  add('Boiler Bathrooms', form.boiler_bathrooms?.trim() || '');
+  add('Boiler Open to Free Survey', formatYesNo(form.boiler_open_survey));
+  add('Boiler Survey Booked', formatYesNo(form.boiler_survey_booked));
+  add('Boiler Agent Name', form.boiler_agent_name?.trim() || '');
+  add('Boiler Agent Date', form.boiler_agent_date?.trim() || '');
+  add('Boiler Electric (notes)', form.boiler_electric?.trim() || '');
+
+  return parts.join('\n');
+}
+
+/** Map parsed boiler section lines back into form keys */
+function boilerParsedToForm(b: Record<string, string>): Partial<Record<string, string>> {
+  const out: Partial<Record<string, string>> = {};
+
+  const spend = (b['Boiler Energy Spend'] || '').toLowerCase();
+  if (spend.includes('gas')) out.boiler_energy_gas = 'true';
+  if (spend.includes('dual')) out.boiler_energy_dual = 'true';
+
+  const ageRaw = (b['Boiler Age'] || '').trim().toLowerCase();
+  const ageRevLc: Record<string, string> = {
+    '7-10 years': '7_10',
+    'over 10 years': 'over_10',
+    '15+ years': '15_plus',
+    unsure: 'unsure',
+  };
+  out.boiler_age = ageRevLc[ageRaw] || '';
+
+  const typeRaw = (b['Boiler Type'] || '').trim().toLowerCase();
+  const typeRevLc: Record<string, string> = {
+    combi: 'combi',
+    system: 'system',
+    'back boiler': 'back',
+    unsure: 'unsure',
+  };
+  out.boiler_type = typeRevLc[typeRaw] || '';
+
+  const fuelRaw = (b['Boiler Fuel'] || '').trim().toLowerCase();
+  const fuelRevLc: Record<string, string> = {
+    oil: 'oil',
+    lpg: 'lpg',
+    gas: 'gas',
+    electric: 'electric',
+  };
+  out.boiler_fuel = fuelRevLc[fuelRaw] || '';
+
+  const loc = (b['Boiler Location'] || '').toLowerCase();
+  if (loc.includes('kitchen')) out.boiler_loc_kitchen = 'true';
+  if (loc.includes('first floor')) out.boiler_loc_first_floor = 'true';
+  if (loc.includes('loft')) out.boiler_loc_loft = 'true';
+  if (loc.includes('garage')) out.boiler_loc_garage = 'true';
+  const otherM = (b['Boiler Location'] || '').match(/other\s*\(([^)]+)\)/i);
+  if (otherM) out.boiler_loc_other = otherM[1].trim();
+
+  const working = (b['Boiler Working Properly'] || '').toLowerCase();
+  if (working === 'yes') out.boiler_working = 'true';
+  else if (working === 'no') out.boiler_working = 'false';
+
+  out.boiler_last_serviced = b['Boiler Last Serviced'] || '';
+
+  const cov = (b['Boiler Cover'] || '').toLowerCase();
+  if (cov === 'yes') out.boiler_cover = 'yes';
+  else if (cov === 'no') out.boiler_cover = 'no';
+  else if (cov === 'unknown') out.boiler_cover = 'unknown';
+
+  out.boiler_cover_monthly_cost = b['Boiler Cover Monthly Cost'] || '';
+  out.boiler_cover_supplier = b['Boiler Cover Supplier'] || '';
+  out.boiler_breakdowns_12m = b['Boiler Breakdowns (12 months)'] || '';
+
+  const iss = (b['Boiler Issues'] || '').toLowerCase();
+  if (iss.includes('noisy')) out.boiler_issue_noisy = 'true';
+  if (iss.includes('leaking')) out.boiler_issue_leaking = 'true';
+  if (iss.includes('pressure')) out.boiler_issue_pressure = 'true';
+  if (iss.includes('hot water')) out.boiler_issue_hot_water = 'true';
+  if (iss.includes('not heating all rooms')) out.boiler_issue_not_all_rooms = 'true';
+
+  const propRaw = (b['Boiler Property Type'] || '').trim().toLowerCase();
+  const propRevLc: Record<string, string> = {
+    detached: 'detached',
+    'semi-detached': 'semi',
+    terraced: 'terraced',
+    'flat/bungalow': 'flat_bungalow',
+  };
+  out.boiler_property_type = propRevLc[propRaw] || '';
+
+  out.boiler_bathrooms = b['Boiler Bathrooms'] || '';
+
+  const os = (b['Boiler Open to Free Survey'] || '').toLowerCase();
+  if (os === 'yes') out.boiler_open_survey = 'true';
+  else if (os === 'no') out.boiler_open_survey = 'false';
+
+  const sb = (b['Boiler Survey Booked'] || '').toLowerCase();
+  if (sb === 'yes') out.boiler_survey_booked = 'true';
+  else if (sb === 'no') out.boiler_survey_booked = 'false';
+
+  out.boiler_agent_name = b['Boiler Agent Name'] || '';
+  out.boiler_agent_date = b['Boiler Agent Date'] || '';
+  out.boiler_electric = b['Boiler Electric (notes)'] || '';
+
+  return out;
+}
+
 export interface MargavLead {
   id: string;
   firstName: string;
@@ -194,6 +400,7 @@ export interface MargavLead {
   addressLine2?: string | null;
   city?: string | null;
   postcode?: string | null;
+  productLine?: string | null;
   notes?: string | null;
   status?: string;
   interestLevel?: string | null;
@@ -227,6 +434,7 @@ interface AgentLeadFormProps {
 const inputBorderClass = 'border-2 border-gray-300';
 
 const YN_UNSET = '_unset';
+const PL_UNSET = '_unset';
 
 function OptionalYesNoSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
@@ -320,6 +528,35 @@ const defaultForm: Record<string, string> = {
   previous_quotes_details: '',
   assessment_date_preference: '',
   assessment_time_preference: '',
+  product_line: '',
+  boiler_energy_gas: '',
+  boiler_energy_dual: '',
+  boiler_age: '',
+  boiler_type: '',
+  boiler_fuel: '',
+  boiler_loc_kitchen: '',
+  boiler_loc_first_floor: '',
+  boiler_loc_loft: '',
+  boiler_loc_garage: '',
+  boiler_loc_other: '',
+  boiler_working: '',
+  boiler_last_serviced: '',
+  boiler_cover: '',
+  boiler_cover_monthly_cost: '',
+  boiler_cover_supplier: '',
+  boiler_breakdowns_12m: '',
+  boiler_issue_noisy: '',
+  boiler_issue_leaking: '',
+  boiler_issue_pressure: '',
+  boiler_issue_hot_water: '',
+  boiler_issue_not_all_rooms: '',
+  boiler_property_type: '',
+  boiler_bathrooms: '',
+  boiler_open_survey: '',
+  boiler_survey_booked: '',
+  boiler_agent_name: '',
+  boiler_agent_date: '',
+  boiler_electric: '',
   notes: '',
 };
 
@@ -337,9 +574,15 @@ export function AgentLeadForm({
   const [showCallbackDialog, setShowCallbackDialog] = useState(false);
   const [callbackDateTime, setCallbackDateTime] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [agentDisplayName, setAgentDisplayName] = useState('');
 
   useEffect(() => {
-    getMe().then((me) => setCurrentUserId(me.id)).catch(() => {});
+    getMe()
+      .then((me) => {
+        setCurrentUserId(me.id);
+        setAgentDisplayName(me.fullName?.trim() || '');
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -352,15 +595,24 @@ export function AgentLeadForm({
     if (!open) return;
 
     if (lead) {
-      const parsed = parseNotesData(lead.notes ?? '');
+      const notesRaw = lead.notes ?? '';
+      const preamble = extractPreamble(notesRaw);
+      const solarParsed = parseSectionContent(notesRaw, DETAILED_SECTION);
+      const boilerParsed = parseSectionContent(notesRaw, BOILER_SECTION);
+      const parsed = parseNotesData(notesRaw);
+      const detailSource = Object.keys(solarParsed).length > 0 ? solarParsed : parsed;
+      const boilerForm = boilerParsedToForm(boilerParsed);
       const name = `${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim();
       const { supplier: energySupplier, other: energyOther } = parseEnergySupplierFromNotes(parsed);
       const monthlyRaw =
+        detailSource['Monthly Electricity Spend (over £60)'] ??
+        detailSource['Monthly Electricity Spend'] ??
         parsed['Monthly Electricity Spend (over £60)'] ??
         parsed['Monthly Electricity Spend'] ??
         '';
       setForm({
         ...defaultForm,
+        ...boilerForm,
         full_name: name,
         phone: lead.phone ?? '',
         email: lead.email ?? '',
@@ -368,12 +620,28 @@ export function AgentLeadForm({
         city: lead.city ?? parsed.city ?? parsed.City ?? '',
         postcode: lead.postcode ?? parsed.postcode ?? parsed.Postcode ?? parsed['Postal code'] ?? '',
         preferred_contact_time: parsePreferredContactTime(
-          parsed['Preferred Contact Time'] ?? parsed['Preferred contact time'] ?? ''
+          detailSource['Preferred Contact Time'] ??
+            detailSource['Preferred contact time'] ??
+            parsed['Preferred Contact Time'] ??
+            parsed['Preferred contact time'] ??
+            ''
         ),
-        property_type: parsed['Property Type'] ?? parsed['Property type'] ?? '',
-        number_of_bedrooms: parsed['Number of Bedrooms'] ?? parsed['Bedrooms'] ?? '',
-        roof_type: parsed['Roof Type'] ?? parsed['Roof type'] ?? '',
-        roof_material: parsed['Roof Material'] ?? parsed['Roof material'] ?? '',
+        property_type:
+          detailSource['Property Type'] ??
+          detailSource['Property type'] ??
+          parsed['Property Type'] ??
+          parsed['Property type'] ??
+          '',
+        number_of_bedrooms:
+          detailSource['Number of Bedrooms'] ?? detailSource['Bedrooms'] ?? parsed['Number of Bedrooms'] ?? parsed['Bedrooms'] ?? '',
+        roof_type:
+          detailSource['Roof Type'] ?? detailSource['Roof type'] ?? parsed['Roof Type'] ?? parsed['Roof type'] ?? '',
+        roof_material:
+          detailSource['Roof Material'] ??
+          detailSource['Roof material'] ??
+          parsed['Roof Material'] ??
+          parsed['Roof material'] ??
+          '',
         monthly_electricity_spend: lead.monthlyEnergyBill
           ? String(lead.monthlyEnergyBill)
           : monthlyRaw.replace(/[£,]/g, '').trim(),
@@ -382,33 +650,63 @@ export function AgentLeadForm({
             ? 'yes'
             : lead.homeowner === false
               ? 'no'
-              : parseOwnership(parsed['Property Ownership'] ?? parsed['Property ownership'] ?? ''),
-        lives_with_partner: parseYesNo(parsed['Lives with Partner'] ?? parsed['Lives with partner'] ?? ''),
-        age_range_18_74: parseYesNo(parsed['Age Range 18-74'] ?? parsed['Age range 18-74'] ?? ''),
-        moving_within_5_years: parseYesNo(parsed['Moving Within 5 Years'] ?? parsed['Moving within 5 years'] ?? ''),
-        loft_conversions: parseYesNo(parsed['Loft Conversions'] ?? ''),
-        velux_windows: parseYesNo(parsed['Velux Windows'] ?? ''),
-        dormers: parseYesNo(parsed['Dormers'] ?? ''),
-        spray_foam_roof: parseTriState(parsed['Spray Foam Roof'] ?? ''),
-        building_work_roof: parseYesNo(parsed['Building Work on Roof'] ?? ''),
-        has_ev_charger: parseYesNo(parsed['Has EV Charger'] ?? ''),
-        debt_management_bankruptcy: parseYesNo(parsed['Debt Management/Bankruptcy'] ?? ''),
-        government_grants_aware: parseYesNo(parsed['Government Grants Aware'] ?? ''),
+              : parseOwnership(
+                  detailSource['Property Ownership'] ??
+                    detailSource['Property ownership'] ??
+                    parsed['Property Ownership'] ??
+                    parsed['Property ownership'] ??
+                    ''
+                ),
+        lives_with_partner: parseYesNo(
+          detailSource['Lives with Partner'] ?? detailSource['Lives with partner'] ?? parsed['Lives with Partner'] ?? parsed['Lives with partner'] ?? ''
+        ),
+        age_range_18_74: parseYesNo(
+          detailSource['Age Range 18-74'] ?? detailSource['Age range 18-74'] ?? parsed['Age Range 18-74'] ?? parsed['Age range 18-74'] ?? ''
+        ),
+        moving_within_5_years: parseYesNo(
+          detailSource['Moving Within 5 Years'] ??
+            detailSource['Moving within 5 years'] ??
+            parsed['Moving Within 5 Years'] ??
+            parsed['Moving within 5 years'] ??
+            ''
+        ),
+        loft_conversions: parseYesNo(detailSource['Loft Conversions'] ?? parsed['Loft Conversions'] ?? ''),
+        velux_windows: parseYesNo(detailSource['Velux Windows'] ?? parsed['Velux Windows'] ?? ''),
+        dormers: parseYesNo(detailSource['Dormers'] ?? parsed['Dormers'] ?? ''),
+        spray_foam_roof: parseTriState(detailSource['Spray Foam Roof'] ?? parsed['Spray Foam Roof'] ?? ''),
+        building_work_roof: parseYesNo(detailSource['Building Work on Roof'] ?? parsed['Building Work on Roof'] ?? ''),
+        has_ev_charger: parseYesNo(detailSource['Has EV Charger'] ?? parsed['Has EV Charger'] ?? ''),
+        debt_management_bankruptcy: parseYesNo(
+          detailSource['Debt Management/Bankruptcy'] ?? parsed['Debt Management/Bankruptcy'] ?? ''
+        ),
+        government_grants_aware: parseYesNo(
+          detailSource['Government Grants Aware'] ?? parsed['Government Grants Aware'] ?? ''
+        ),
         current_energy_supplier: energySupplier,
         energy_provider_other: energyOther,
-        electric_heating_appliances: parsed['Electric Heating/Appliances'] ?? '',
-        energy_details: parsed['Energy Details'] ?? '',
-        timeframe: parsed['Timeframe'] ?? '',
-        timeframe_details: parsed['Timeframe Details'] ?? '',
-        previous_quotes_details: parsed['Previous Quote'] ?? parsed['Previous Quotes Details'] ?? '',
+        electric_heating_appliances:
+          detailSource['Electric Heating/Appliances'] ?? parsed['Electric Heating/Appliances'] ?? '',
+        energy_details: detailSource['Energy Details'] ?? parsed['Energy Details'] ?? '',
+        timeframe: detailSource['Timeframe'] ?? parsed['Timeframe'] ?? '',
+        timeframe_details: detailSource['Timeframe Details'] ?? parsed['Timeframe Details'] ?? '',
+        previous_quotes_details:
+          detailSource['Previous Quote'] ??
+          detailSource['Previous Quotes Details'] ??
+          parsed['Previous Quote'] ??
+          parsed['Previous Quotes Details'] ??
+          '',
         day_night_rate: (() => {
-          const d = (parsed['Day/Night Rate'] ?? '').trim().toLowerCase();
-          return d === 'unsure' ? '' : (parsed['Day/Night Rate'] ?? '');
+          const raw = detailSource['Day/Night Rate'] ?? parsed['Day/Night Rate'] ?? '';
+          const d = raw.trim().toLowerCase();
+          return d === 'unsure' ? '' : raw;
         })(),
-        employment_status: parsed['Employment Status'] ?? '',
-        assessment_date_preference: parsed['Assessment Date Preference'] ?? '',
-        assessment_time_preference: parsed['Assessment Time Preference'] ?? '',
-        notes: parsed._notesOnly ?? (lead.notes ?? '').split(DETAILED_SECTION)[0]?.trim() ?? '',
+        employment_status: detailSource['Employment Status'] ?? parsed['Employment Status'] ?? '',
+        assessment_date_preference:
+          detailSource['Assessment Date Preference'] ?? parsed['Assessment Date Preference'] ?? '',
+        assessment_time_preference:
+          detailSource['Assessment Time Preference'] ?? parsed['Assessment Time Preference'] ?? '',
+        product_line: lead.productLine === 'SOLAR' || lead.productLine === 'HEATING' ? lead.productLine : '',
+        notes: preamble,
       });
     } else if (prepopulatedData) {
       const name = prepopulatedData.full_name ?? [prepopulatedData.first_name, prepopulatedData.last_name].filter(Boolean).join(' ');
@@ -432,7 +730,7 @@ export function AgentLeadForm({
     if (errors[key]) setErrors((e) => ({ ...e, [key]: '' }));
   };
 
-  const validate = (): boolean => {
+  const validate = (options?: { requireProductLine?: boolean }): boolean => {
     const e: Record<string, string> = {};
     if (!form.full_name?.trim()) e.full_name = 'Full name is required';
     if (!form.address?.trim()) e.address = 'Address is required';
@@ -442,14 +740,25 @@ export function AgentLeadForm({
     if (!form.email?.trim()) e.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Invalid email';
     if (!form.preferred_contact_time?.trim()) e.preferred_contact_time = 'Preferred contact time is required';
+    if (options?.requireProductLine && form.product_line !== 'SOLAR' && form.product_line !== 'HEATING') {
+      e.product_line = 'Select solar or heating before sending to the qualifier';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const buildNotes = () => {
-    const notesOnly = (form.notes || '').split(DETAILED_SECTION)[0]?.trim() ?? '';
-    const detailed = buildDetailedNotes(form);
-    return detailed ? `${notesOnly}\n\n${DETAILED_SECTION}\n${detailed}` : notesOnly;
+    const notesOnly = (form.notes || '').trim();
+    const chunks: string[] = [];
+    if (notesOnly) chunks.push(notesOnly);
+    if (form.product_line === 'HEATING') {
+      const boiler = buildBoilerNotes(form);
+      if (boiler) chunks.push('', BOILER_SECTION, boiler);
+    } else {
+      const detailed = buildDetailedNotes(form);
+      if (detailed) chunks.push('', DETAILED_SECTION, detailed);
+    }
+    return chunks.join('\n').trim();
   };
 
   const splitName = (name: string) => {
@@ -467,6 +776,10 @@ export function AgentLeadForm({
       const { firstName, lastName } = splitName(form.full_name);
       const notes = buildNotes();
 
+      const productLinePatch =
+        form.product_line === 'SOLAR' || form.product_line === 'HEATING'
+          ? { productLine: form.product_line as 'SOLAR' | 'HEATING' }
+          : {};
       if (lead) {
         await updateLead(lead.id, {
           firstName,
@@ -480,6 +793,7 @@ export function AgentLeadForm({
           homeowner: form.property_ownership === 'yes' ? true : form.property_ownership === 'no' ? false : undefined,
           monthlyEnergyBill: form.monthly_electricity_spend ? parseFloat(form.monthly_electricity_spend) : undefined,
           roofCondition: form.roof_type || form.roof_material || undefined,
+          ...productLinePatch,
         });
       } else {
         await createLead({
@@ -492,6 +806,7 @@ export function AgentLeadForm({
           postcode: form.postcode || undefined,
           notes: notes || undefined,
           source: 'Agent',
+          ...productLinePatch,
         });
       }
       onSaved?.();
@@ -504,9 +819,10 @@ export function AgentLeadForm({
   };
 
   const handleSendToQualifier = async () => {
-    if (!validate()) return;
+    if (!validate({ requireProductLine: true })) return;
     setLoading(true);
     try {
+      const productLine = form.product_line as 'SOLAR' | 'HEATING';
       if (lead?.id) {
         const { firstName, lastName } = splitName(form.full_name);
         const notes = buildNotes();
@@ -519,6 +835,7 @@ export function AgentLeadForm({
           city: form.city || undefined,
           postcode: form.postcode || undefined,
           notes: notes || undefined,
+          productLine,
         });
         await updateLeadStatus(lead.id, 'QUALIFYING', 'Sent to qualifier from lead sheet');
       } else {
@@ -535,6 +852,7 @@ export function AgentLeadForm({
           notes: notes || undefined,
           source: 'Agent',
           status: 'QUALIFYING',
+          productLine,
         });
       }
       onSaved?.();
@@ -645,8 +963,43 @@ export function AgentLeadForm({
                 <p className="text-sm text-destructive">{errors.preferred_contact_time}</p>
               )}
             </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="product_line">Product line</Label>
+              <p className="text-xs text-muted-foreground mb-1">
+                Heating shows the boiler lead sheet fields. Required when you use &quot;Send to Qualifier&quot;.
+              </p>
+              <Select
+                value={form.product_line || PL_UNSET}
+                onValueChange={(v) => {
+                  const next = v === PL_UNSET ? '' : v;
+                  setForm((p) => {
+                    if (next === 'HEATING' && !p.boiler_agent_name?.trim() && agentDisplayName) {
+                      return { ...p, product_line: next, boiler_agent_name: agentDisplayName };
+                    }
+                    return { ...p, product_line: next };
+                  });
+                  if (errors.product_line) setErrors((e) => ({ ...e, product_line: '' }));
+                }}
+              >
+                <SelectTrigger className={`${errors.product_line ? 'border-destructive ' : ''}${inputBorderClass}`}>
+                  <SelectValue placeholder="Select product" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PL_UNSET}>Not set (save draft only)</SelectItem>
+                  <SelectItem value="SOLAR">Solar</SelectItem>
+                  <SelectItem value="HEATING">Heating (boilers)</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.product_line && <p className="text-sm text-destructive">{errors.product_line}</p>}
+            </div>
           </FormSection>
 
+          {form.product_line === 'HEATING' ? (
+            <BoilerLeadSheetSections form={form} update={update} inputBorderClass={inputBorderClass} />
+          ) : null}
+
+          {form.product_line !== 'HEATING' ? (
+          <>
           <FormSection title="Property Information" icon="🏠">
             <div>
               <Label>Do you own the property?</Label>
@@ -817,10 +1170,12 @@ export function AgentLeadForm({
               <Textarea value={form.energy_details} onChange={(e) => update('energy_details', e.target.value)} rows={2} className={inputBorderClass} />
             </div>
           </FormSection>
+          </>
+          ) : null}
 
           <FormSection title="Financial & Employment" icon="💰">
             <div>
-              <Label>Current monthly electricity spend (over £60)?</Label>
+              <Label>{form.product_line === 'HEATING' ? 'Current monthly electricity spend (if relevant)?' : 'Current monthly electricity spend (over £60)?'}</Label>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">£</span>
                 <Input
@@ -855,7 +1210,11 @@ export function AgentLeadForm({
               />
             </div>
             <div>
-              <Label>Aware there are no government grants for solar?</Label>
+              <Label>
+                {form.product_line === 'HEATING'
+                  ? 'Aware of boiler / heating support or incentives?'
+                  : 'Aware there are no government grants for solar?'}
+              </Label>
               <OptionalYesNoSelect
                 value={form.government_grants_aware}
                 onChange={(v) => update('government_grants_aware', v)}
@@ -908,11 +1267,9 @@ export function AgentLeadForm({
             <Button variant="outline" onClick={() => setShowCallbackDialog(true)} disabled={loading}>
               📞 Schedule Callback
             </Button>
-            {lead && (
-              <Button variant="secondary" onClick={handleSendToQualifier} disabled={loading}>
-                Send to Qualifier
-              </Button>
-            )}
+            <Button variant="secondary" onClick={handleSendToQualifier} disabled={loading}>
+              Send to Qualifier
+            </Button>
             <Button onClick={handleSubmit} disabled={loading}>
               {loading ? 'Saving...' : lead ? 'Update Lead' : 'Create Lead'}
             </Button>

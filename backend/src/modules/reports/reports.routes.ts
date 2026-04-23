@@ -15,6 +15,7 @@ router.get('/rep-performance', reportsController.getRepPerformance);
 router.get('/weekly-lead-performance', reportsController.getWeeklyLeadPerformance);
 router.get('/weekly-funnel', reportsController.getWeeklyFunnel);
 router.get('/appointment-outcomes', reportsController.getAppointmentOutcomes);
+router.get('/lead-product-lines', reportsController.getLeadProductLines);
 
 // Agent-specific reports (filter by assignedAgentId)
 router.get('/agent/depositions', requireRoles(Role.AGENT), reportsController.getAgentDepositions);

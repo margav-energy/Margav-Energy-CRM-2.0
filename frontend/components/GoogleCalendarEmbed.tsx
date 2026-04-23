@@ -13,7 +13,7 @@ type GoogleCalendarEmbedProps = {
 };
 
 /**
- * Embeds the Margav sales Google Calendar (read-only iframe from Calendar → Integrate calendar).
+ * Embeds the Margav booking Google Calendar (read-only iframe from Calendar → Integrate calendar).
  * Google does not provide the full “click to create event” UI inside the embed; use **Open in Google Calendar**
  * for the normal web app, or create events from the CRM (Calendar API sync).
  */
@@ -49,7 +49,7 @@ export function GoogleCalendarEmbed({
           <iframe
             src={embedUrl}
             style={{ border: 0, width: '100%', height }}
-            title="Google Calendar — sales@margav.energy"
+            title="Google Calendar — booking"
             loading="lazy"
           />
         </div>

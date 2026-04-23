@@ -7,6 +7,67 @@ import { config } from '../../config';
 import { AppError } from '../../middleware/errorHandler';
 import { sendSms as providerSendSms } from '../../lib/smsProvider';
 
+export async function listThreads(params?: { search?: string; status?: 'ACTIVE' | 'ARCHIVED'; limit?: number }) {
+  const limit = Math.min(Math.max(params?.limit ?? 50, 1), 200);
+  const search = params?.search?.trim();
+  const where: Record<string, unknown> = {};
+
+  if (params?.status) {
+    where.status = params.status;
+  }
+
+  if (search) {
+    where.OR = [
+      { phone: { contains: search } },
+      { lead: { firstName: { contains: search, mode: 'insensitive' } } },
+      { lead: { lastName: { contains: search, mode: 'insensitive' } } },
+      { lead: { email: { contains: search, mode: 'insensitive' } } },
+    ];
+  }
+
+  const threads = await prisma.smsThread.findMany({
+    where,
+    include: {
+      lead: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          status: true,
+          smsAutomationStage: true,
+        },
+      },
+      messages: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+    orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
+    take: limit,
+  });
+
+  return threads.map((thread) => ({
+    id: thread.id,
+    leadId: thread.leadId,
+    phone: thread.phone,
+    status: thread.status,
+    lastMessageAt: thread.lastMessageAt,
+    customerReplyAt: thread.customerReplyAt,
+    bookedViaSms: thread.bookedViaSms,
+    lead: thread.lead,
+    lastMessage: thread.messages[0]
+      ? {
+          id: thread.messages[0].id,
+          direction: thread.messages[0].direction,
+          body: thread.messages[0].body,
+          deliveryStatus: thread.messages[0].deliveryStatus,
+          createdAt: thread.messages[0].createdAt,
+        }
+      : null,
+  }));
+}
+
 export async function getOrCreateThread(leadId: string) {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) {

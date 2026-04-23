@@ -36,6 +36,12 @@ const STATUS_OPTIONS = [
   { value: 'NOT_INTERESTED', label: 'Blowout' },
 ];
 
+function formatProductLine(pl: string | null | undefined): string {
+  if (pl === 'SOLAR') return 'Solar';
+  if (pl === 'HEATING') return 'Heating';
+  return '—';
+}
+
 function statusPillClass(status: string | undefined): string {
   const s = status ?? '';
   const map: Record<string, string> = {
@@ -140,7 +146,7 @@ export function QualifierLeadsTable({
 
   const formatStatus = (status: string) => status.replace(/_/g, ' ');
 
-  const colCount = 7 + (showSource ? 1 : 0) + (showAgent ? 1 : 0);
+  const colCount = 8 + (showSource ? 1 : 0) + (showAgent ? 1 : 0);
 
   return (
     <div className="space-y-4">
@@ -215,10 +221,11 @@ export function QualifierLeadsTable({
                   <TableHead>Name</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Product</TableHead>
                   {showSource ? <TableHead>Source</TableHead> : null}
                   <TableHead>Status</TableHead>
                   {showAgent ? <TableHead>Agent</TableHead> : null}
-                  <TableHead>Qualifier</TableHead>
+                  <TableHead>Qualifier / qualified by</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="w-20"></TableHead>
                 </TableRow>
@@ -248,6 +255,9 @@ export function QualifierLeadsTable({
                       </TableCell>
                       <TableCell>{lead.phone || '—'}</TableCell>
                       <TableCell>{lead.email || '—'}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {formatProductLine(lead.productLine)}
+                      </TableCell>
                       {showSource ? (
                         <TableCell className="text-muted-foreground">
                           {lead.source || '—'}
@@ -273,7 +283,9 @@ export function QualifierLeadsTable({
                         </TableCell>
                       ) : null}
                       <TableCell className="text-muted-foreground">
-                        {lead.assignedQualifier?.fullName || '—'}
+                        {lead.qualifiedByQualifier?.fullName ??
+                          lead.assignedQualifier?.fullName ??
+                          '—'}
                       </TableCell>
                       <TableCell className="text-muted-foreground">{formatDate(lead.createdAt)}</TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>

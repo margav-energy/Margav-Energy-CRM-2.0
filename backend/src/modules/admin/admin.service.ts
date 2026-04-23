@@ -35,6 +35,119 @@ const monthStart = () => {
   return d;
 };
 
+export type AdminOperationalAlert = {
+  type: string;
+  title: string;
+  count: number;
+  severity: 'high' | 'medium' | 'low';
+  entityIds: string[];
+  actions: { label: string; action: string }[];
+};
+
+/** Hot leads, qualified-without-appt, overdue tasks, failed SMS — same rules as admin overview cards. */
+async function buildAdminOperationalAlerts(
+  leadsNotContacted5Min: number,
+  fiveMinAgo: Date
+): Promise<AdminOperationalAlert[]> {
+  const alerts: AdminOperationalAlert[] = [];
+
+  if (leadsNotContacted5Min > 0) {
+    const hot = await prisma.lead.findMany({
+      where: {
+        status: LeadStatus.NEW,
+        createdAt: { lte: fiveMinAgo },
+      },
+      select: { id: true },
+      take: 10,
+    });
+    alerts.push({
+      type: 'hot_leads',
+      title: 'Leads Not Contacted (5min SLA)',
+      count: leadsNotContacted5Min,
+      severity: 'high',
+      entityIds: hot.map((l) => l.id),
+      actions: [{ label: 'View', action: 'view' }, { label: 'Assign', action: 'assign' }],
+    });
+  }
+
+  const qualifiedNoAppt = await prisma.lead.count({
+    where: {
+      status: LeadStatus.QUALIFIED,
+      appointments: { none: {} },
+    },
+  });
+  if (qualifiedNoAppt > 0) {
+    const leads = await prisma.lead.findMany({
+      where: {
+        status: LeadStatus.QUALIFIED,
+        appointments: { none: {} },
+      },
+      select: { id: true },
+      take: 5,
+    });
+    alerts.push({
+      type: 'qualified_no_appt',
+      title: 'Qualified, No Appointment',
+      count: qualifiedNoAppt,
+      severity: 'high',
+      entityIds: leads.map((l) => l.id),
+      actions: [{ label: 'Set Appointment', action: 'set_appt' }],
+    });
+  }
+
+  const overdueTasks = await prisma.task.count({
+    where: { status: 'OVERDUE' },
+  });
+  if (overdueTasks > 0) {
+    const tasks = await prisma.task.findMany({
+      where: { status: 'OVERDUE' },
+      select: { id: true },
+      take: 5,
+    });
+    alerts.push({
+      type: 'overdue',
+      title: 'Overdue Follow-ups',
+      count: overdueTasks,
+      severity: 'medium',
+      entityIds: tasks.map((t) => t.id),
+      actions: [{ label: 'View Tasks', action: 'view_tasks' }],
+    });
+  }
+
+  const failedSms = await prisma.smsMessage.count({
+    where: { direction: 'OUTBOUND', deliveryStatus: 'FAILED' },
+  });
+  if (failedSms > 0) {
+    const msgs = await prisma.smsMessage.findMany({
+      where: { direction: 'OUTBOUND', deliveryStatus: 'FAILED' },
+      select: { id: true },
+      take: 5,
+    });
+    alerts.push({
+      type: 'failed_sms',
+      title: 'Failed SMS Deliveries',
+      count: failedSms,
+      severity: 'high',
+      entityIds: msgs.map((m) => m.id),
+      actions: [{ label: 'Inspect', action: 'inspect' }],
+    });
+  }
+
+  return alerts;
+}
+
+/** For notifications feed (header bell) without loading full admin overview. */
+export async function getAdminOperationalAlerts(): Promise<AdminOperationalAlert[]> {
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const leadsNotContacted5Min = await prisma.lead.count({
+    where: {
+      status: LeadStatus.NEW,
+      createdAt: { lte: fiveMinAgo },
+    },
+  });
+  return buildAdminOperationalAlerts(leadsNotContacted5Min, fiveMinAgo);
+}
+
 /** Previous calendar month [start, end) for comparisons */
 function priorMonthRange() {
   const thisMonth = monthStart();
@@ -204,98 +317,7 @@ export async function getAdminOverview() {
 
   const noShowRate = completedCount + noShowCount > 0 ? noShowCount / (completedCount + noShowCount) : 0;
 
-  const alerts: Array<{
-    type: string;
-    title: string;
-    count: number;
-    severity: 'high' | 'medium' | 'low';
-    entityIds: string[];
-    actions: { label: string; action: string }[];
-  }> = [];
-
-  if (leadsNotContacted5Min > 0) {
-    const hot = await prisma.lead.findMany({
-      where: {
-        status: LeadStatus.NEW,
-        createdAt: { lte: fiveMinAgo },
-      },
-      select: { id: true },
-      take: 10,
-    });
-    alerts.push({
-      type: 'hot_leads',
-      title: 'Leads Not Contacted (5min SLA)',
-      count: leadsNotContacted5Min,
-      severity: 'high',
-      entityIds: hot.map((l) => l.id),
-      actions: [{ label: 'View', action: 'view' }, { label: 'Assign', action: 'assign' }],
-    });
-  }
-
-  const qualifiedNoAppt = await prisma.lead.count({
-    where: {
-      status: LeadStatus.QUALIFIED,
-      appointments: { none: {} },
-    },
-  });
-  if (qualifiedNoAppt > 0) {
-    const leads = await prisma.lead.findMany({
-      where: {
-        status: LeadStatus.QUALIFIED,
-        appointments: { none: {} },
-      },
-      select: { id: true },
-      take: 5,
-    });
-    alerts.push({
-      type: 'qualified_no_appt',
-      title: 'Qualified, No Appointment',
-      count: qualifiedNoAppt,
-      severity: 'high',
-      entityIds: leads.map((l) => l.id),
-      actions: [{ label: 'Set Appointment', action: 'set_appt' }],
-    });
-  }
-
-  const overdueTasks = await prisma.task.count({
-    where: { status: 'OVERDUE' },
-  });
-  if (overdueTasks > 0) {
-    const tasks = await prisma.task.findMany({
-      where: { status: 'OVERDUE' },
-      select: { id: true },
-      take: 5,
-    });
-    alerts.push({
-      type: 'overdue',
-      title: 'Overdue Follow-ups',
-      count: overdueTasks,
-      severity: 'medium',
-      entityIds: tasks.map((t) => t.id),
-      actions: [{ label: 'View Tasks', action: 'view_tasks' }],
-    });
-  }
-
-  const failedSms = await prisma.smsMessage.count({
-    where: { direction: 'OUTBOUND', deliveryStatus: 'FAILED' },
-  });
-  if (failedSms > 0) {
-    const msgs = await prisma.smsMessage.findMany({
-      where: { direction: 'OUTBOUND', deliveryStatus: 'FAILED' },
-      select: { id: true },
-      take: 5,
-    });
-    alerts.push({
-      type: 'failed_sms',
-      title: 'Failed SMS Deliveries',
-      count: failedSms,
-      severity: 'high',
-      entityIds: msgs.map((m) => m.id),
-      actions: [{ label: 'Inspect', action: 'inspect' }],
-    });
-  }
-
-  // Appointments require fieldSalesRepId in schema - no "missing rep" case
+  const alerts = await buildAdminOperationalAlerts(leadsNotContacted5Min, fiveMinAgo);
 
   const priorWon = Number(wonRevenuePriorMonth._sum.estimatedValue ?? 0);
   const thisWon = Number(wonRevenueThisMonth._sum.estimatedValue ?? 0);
@@ -352,58 +374,80 @@ export async function getAdminOverviewCharts(period: AdminChartPeriod) {
     leadsByStatus[g.status] = g._count.id;
   }
 
+  const [noContact, notInterested, callBack, wrongNumber, appointmentBooked, alreadyHave, dnqExcludingAlreadyHave] =
+    await Promise.all([
+      prisma.lead.count({ where: { createdAt: { gte: from }, status: LeadStatus.NO_CONTACT } }),
+      prisma.lead.count({ where: { createdAt: { gte: from }, status: LeadStatus.NOT_INTERESTED } }),
+      prisma.lead.count({ where: { createdAt: { gte: from }, status: LeadStatus.QUALIFIER_CALLBACK } }),
+      prisma.callLog.findMany({
+        where: { createdAt: { gte: from }, outcome: 'WRONG_NUMBER' },
+        select: { leadId: true },
+        distinct: ['leadId'],
+      }).then((rows) => rows.length),
+      prisma.lead.count({ where: { createdAt: { gte: from }, status: LeadStatus.APPOINTMENT_SET } }),
+      prisma.lead.count({
+        where: {
+          createdAt: { gte: from },
+          notes: { contains: 'Already Has Solar', mode: 'insensitive' },
+        },
+      }),
+      prisma.lead.count({
+        where: {
+          createdAt: { gte: from },
+          status: LeadStatus.NOT_QUALIFIED,
+          NOT: { notes: { contains: 'Already Has Solar', mode: 'insensitive' } },
+        },
+      }),
+    ]);
+
   const funnelSnapshot = [
-    { stage: 'Leads', count: await prisma.lead.count({ where: { createdAt: { gte: from } } }) },
-    {
-      stage: 'Contacted',
-      count: await prisma.lead.count({
-        where: {
-          status: {
-            in: [
-              'CONTACTED',
-              'INTERESTED',
-              'QUALIFYING',
-              'QUALIFIED',
-              'SOLD',
-              'APPOINTMENT_SET',
-              'NOT_INTERESTED',
-              'DEPOSITION',
-            ],
-          },
-          createdAt: { gte: from },
-        },
-      }),
-    },
-    {
-      stage: 'Qualified',
-      count: await prisma.lead.count({
-        where: {
-          status: { in: ['QUALIFIED', 'SOLD', 'APPOINTMENT_SET'] },
-          createdAt: { gte: from },
-        },
-      }),
-    },
-    {
-      stage: 'Appointments',
-      count: await prisma.appointment.count({
-        where: { createdAt: { gte: from } },
-      }),
-    },
-    {
-      stage: 'Proposals',
-      count: await prisma.opportunity.count({
-        where: { createdAt: { gte: from } },
-      }),
-    },
-    {
-      stage: 'Won',
-      count: await prisma.opportunity.count({
-        where: {
-          stage: OpportunityStage.WON,
-          createdAt: { gte: from },
-        },
-      }),
-    },
+    { stage: 'No Contact', count: noContact },
+    { stage: 'Not Interested', count: notInterested },
+    { stage: 'Call Back', count: callBack },
+    { stage: 'Wrong Number', count: wrongNumber },
+    { stage: 'Appointment Booked', count: appointmentBooked },
+    { stage: 'DNQ', count: dnqExcludingAlreadyHave },
+    { stage: 'Already Have', count: alreadyHave },
+  ];
+
+  const [pitchMiss, apptNotSat, futureAppointment, highToSell, sweep, sold] = await Promise.all([
+    prisma.appointment.count({
+      where: { createdAt: { gte: from }, outcome: 'PITCH_AND_MISS' },
+    }),
+    prisma.appointment.count({
+      where: {
+        createdAt: { gte: from },
+        status: { in: [AppointmentStatus.NO_SHOW, AppointmentStatus.CANCELLED] },
+      },
+    }),
+    prisma.appointment.count({
+      where: {
+        createdAt: { gte: from },
+        status: AppointmentStatus.SCHEDULED,
+      },
+    }),
+    prisma.appointment.count({
+      where: {
+        createdAt: { gte: from },
+        status: AppointmentStatus.COMPLETED,
+        outcome: null,
+      },
+    }),
+    prisma.appointment.count({
+      where: { createdAt: { gte: from }, outcome: 'SWEEP' },
+    }),
+    prisma.appointment.count({
+      where: { createdAt: { gte: from }, outcome: 'SALE_WON' },
+    }),
+  ]);
+
+  const appointmentOutcomeSnapshot = [
+    { stage: 'Pitch & Miss', count: pitchMiss },
+    { stage: 'Appt Not Sat', count: apptNotSat },
+    { stage: 'Future Appointment', count: futureAppointment },
+    { stage: 'High % to sell', count: highToSell },
+    { stage: 'Sweep', count: sweep },
+    { stage: 'Sold', count: sold },
   ];
 
   return {
@@ -411,6 +455,7 @@ export async function getAdminOverviewCharts(period: AdminChartPeriod) {
     periodStart: from.toISOString(),
     leadsByStatus,
     funnelSnapshot,
+    appointmentOutcomeSnapshot,
   };
 }
 

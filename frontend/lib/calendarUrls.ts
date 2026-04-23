@@ -1,8 +1,9 @@
-/** Public embed URL for sales@margav.energy (Calendar → Integrate calendar). */
+/** Public embed URL for booking calendar (Calendar → Integrate calendar). */
 export const DEFAULT_GOOGLE_CALENDAR_EMBED_URL =
-  'https://calendar.google.com/calendar/embed?src=sales%40margav.energy&ctz=Europe%2FLondon';
+  'https://calendar.google.com/calendar/embed?src=c_3c9fc2595de3b29e89bae6a30017d9d0d413b72932f1d5c37811cf9861c18253%40group.calendar.google.com&ctz=Europe%2FLondon';
 
-const DEFAULT_CALENDAR_ID = 'sales@margav.energy';
+const DEFAULT_CALENDAR_ID =
+  'c_3c9fc2595de3b29e89bae6a30017d9d0d413b72932f1d5c37811cf9861c18253@group.calendar.google.com';
 
 /**
  * Base64url of the calendar ID (email), used by Google Calendar’s full web app `cid=` param.

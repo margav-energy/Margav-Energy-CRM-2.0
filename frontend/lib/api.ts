@@ -45,6 +45,8 @@ export async function getNotifications() {
     message: string;
     createdAt: string;
     link?: string;
+    /** Human-readable nav destination */
+    path?: string;
     priority: string;
   }>>('/notifications');
   return data;
@@ -99,6 +101,7 @@ export async function getAdminOverviewCharts(period: AdminChartPeriod = 'month')
     periodStart: string;
     leadsByStatus: Record<string, number>;
     funnelSnapshot: Array<{ stage: string; count: number }>;
+    appointmentOutcomeSnapshot: Array<{ stage: string; count: number }>;
   }>(`/admin/overview/charts?period=${period}`);
   return data;
 }
@@ -174,6 +177,37 @@ export async function getAdminUsers() {
   return data;
 }
 
+export async function createAdminUser(body: {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  password: string;
+  role: 'ADMIN' | 'AGENT' | 'QUALIFIER' | 'FIELD_SALES';
+}) {
+  const { data } = await request<unknown>('/users', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return data;
+}
+
+export async function updateAdminUser(
+  id: string,
+  body: Partial<{
+    fullName: string;
+    username: string;
+    email: string;
+    password: string;
+    role: 'ADMIN' | 'AGENT' | 'QUALIFIER' | 'FIELD_SALES';
+  }>
+) {
+  const { data } = await request<unknown>(`/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return data;
+}
+
 export async function getSmsMetrics() {
   const { data } = await request<Record<string, unknown>>('/admin/sms-metrics');
   return data;
@@ -215,30 +249,19 @@ export async function getTeamWorkload(period: 'week' | 'month' | 'quarter' = 'mo
 
 // Reports (for team performance)
 export async function getRepPerformance(months = 6) {
-  const { data } = await request<Array<{ name: string; calls: number; leads: number; appointments: number; sales: number; revenue: number; conversionRate: number }>>(
-    `/reports/rep-performance?months=${months}`
-  );
-  return data;
-}
-
-export async function getWeeklyLeadPerformance(weeks = 1) {
-  const { data } = await request<Array<{ name: string; value: number; fill: string }>>(
-    `/reports/weekly-lead-performance?weeks=${weeks}`
-  );
-  return data;
-}
-
-export async function getWeeklyFunnel(weeks = 1) {
-  const { data } = await request<Array<{ name: string; value: number; fill: string }>>(
-    `/reports/weekly-funnel?weeks=${weeks}`
-  );
-  return data;
-}
-
-export async function getAppointmentOutcomes(weeks = 4) {
-  const { data } = await request<Array<{ name: string; value: number; fill: string }>>(
-    `/reports/appointment-outcomes?weeks=${weeks}`
-  );
+  const { data } = await request<
+    Array<{
+      id: string;
+      name: string;
+      role: string;
+      calls: number;
+      leads: number;
+      appointments: number;
+      sales: number;
+      revenue: number;
+      conversionRate: number;
+    }>
+  >(`/reports/rep-performance?months=${months}`);
   return data;
 }
 
@@ -286,7 +309,19 @@ export async function getAgentSummary(weeks = 4) {
     appointmentSet: number;
     inPipeline: number;
     conversionRate: number;
+    byProductLine: { solar: number; heating: number; unspecified: number };
   }>(`/reports/agent/summary?weeks=${weeks}`);
+  return data;
+}
+
+/** Scoped lead mix: Solar vs Heating (boilers); pass `weeks` or `months` */
+export async function getLeadProductLines(opts: { weeks?: number; months?: number } = {}) {
+  const q = new URLSearchParams();
+  if (opts.weeks != null) q.set('weeks', String(opts.weeks));
+  else q.set('months', String(opts.months ?? 6));
+  const { data } = await request<Array<{ name: string; value: number; fill: string }>>(
+    `/reports/lead-product-lines?${q.toString()}`
+  );
   return data;
 }
 
@@ -299,6 +334,7 @@ export async function getLeads(params?: {
   /** Comma-separated e.g. Rattle,Leadwise */
   sources?: string;
   assignedQualifierId?: string;
+  productLine?: 'SOLAR' | 'HEATING';
 }) {
   const q = new URLSearchParams();
   if (params?.page) q.set('page', String(params.page));
@@ -307,6 +343,7 @@ export async function getLeads(params?: {
   if (params?.search) q.set('search', params.search);
   if (params?.sources) q.set('sources', params.sources);
   if (params?.assignedQualifierId) q.set('assignedQualifierId', params.assignedQualifierId);
+  if (params?.productLine) q.set('productLine', params.productLine);
   const { data } = await request<{ items: unknown[]; total: number; page: number; pageSize: number }>(
     `/leads?${q.toString()}`
   );
@@ -367,6 +404,7 @@ export async function createLead(body: {
   notes?: string;
   source?: string;
   status?: string;
+  productLine?: 'SOLAR' | 'HEATING';
 }) {
   const { data } = await request<unknown>('/leads', {
     method: 'POST',
@@ -387,6 +425,7 @@ export async function updateLead(
     city?: string;
     postcode?: string;
     notes?: string;
+    source?: string;
     interestLevel?: string;
     homeowner?: boolean;
     monthlyEnergyBill?: number;
@@ -397,9 +436,21 @@ export async function updateLead(
     smsAutomationPaused?: boolean;
     priority?: boolean;
     duplicateOfLeadId?: string | null;
+    productLine?: 'SOLAR' | 'HEATING' | null;
   }
 ) {
   const { data } = await request<unknown>(`/leads/${leadId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return data;
+}
+
+export async function updateOpportunity(
+  opportunityId: string,
+  body: { ownerId?: string; stage?: 'PITCH_SCHEDULED' | 'PITCH_COMPLETED' | 'WON' | 'LOST'; productType?: 'SOLAR' | 'BATTERY' | 'EV_CHARGER' | 'BUNDLE'; estimatedValue?: number; notes?: string }
+) {
+  const { data } = await request<unknown>(`/opportunities/${opportunityId}`, {
     method: 'PATCH',
     body: JSON.stringify(body),
   });
@@ -424,10 +475,20 @@ export async function getTasks(params?: {
     title: string;
     description?: string | null;
     type: string;
+    priority: string;
     status: string;
     dueDate: string;
     lead?: { id: string; firstName: string; lastName: string; phone?: string | null } | null;
+    assignedToUser?: { id: string; fullName: string; email?: string | null } | null;
   }>; total: number }>(`/tasks?${q.toString()}`);
+  return data;
+}
+
+export async function updateTaskStatus(taskId: string, status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE' | 'CANCELLED') {
+  const { data } = await request<unknown>(`/tasks/${taskId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
   return data;
 }
 
@@ -463,13 +524,38 @@ export async function getSmsThreadByLead(leadId: string) {
   return data;
 }
 
-// Opportunities (for pipeline drag-and-drop)
-export async function updateOpportunity(id: string, body: { stage?: string; ownerId?: string; estimatedValue?: number; notes?: string }) {
-  const { data } = await request<unknown>(`/opportunities/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(body),
-  });
-  return data;
+export async function getSmsThreads(params?: { search?: string; status?: 'ACTIVE' | 'ARCHIVED'; limit?: number }) {
+  const q = new URLSearchParams();
+  if (params?.search) q.set('search', params.search);
+  if (params?.status) q.set('status', params.status);
+  if (params?.limit) q.set('limit', String(params.limit));
+  const { data } = await request<{
+    items: Array<{
+      id: string;
+      leadId: string;
+      phone: string;
+      status: 'ACTIVE' | 'ARCHIVED';
+      lastMessageAt?: string | null;
+      customerReplyAt?: string | null;
+      bookedViaSms: boolean;
+      lead: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        phone: string;
+        status: string;
+        smsAutomationStage?: string | null;
+      };
+      lastMessage: {
+        id: string;
+        direction: 'INBOUND' | 'OUTBOUND';
+        body: string;
+        deliveryStatus: string;
+        createdAt: string;
+      } | null;
+    }>;
+  }>(`/sms/threads?${q.toString()}`);
+  return data.items;
 }
 
 // Team
@@ -571,6 +657,25 @@ export async function createAppointment(body: {
   const { data } = await request<unknown>('/appointments', {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+  return data;
+}
+
+export async function updateAppointment(
+  appointmentId: string,
+  body: { fieldSalesRepId?: string; scheduledAt?: string; notes?: string }
+) {
+  const { data } = await request<unknown>(`/appointments/${appointmentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return data;
+}
+
+export async function updateAppointmentStatus(appointmentId: string, status: string) {
+  const { data } = await request<unknown>(`/appointments/${appointmentId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
   });
   return data;
 }

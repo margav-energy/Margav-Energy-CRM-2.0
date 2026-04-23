@@ -53,6 +53,12 @@ enum ProductType {
   BUNDLE
 }
 
+// Business line for a lead (agent → qualifier), separate from opportunity product mix
+enum LeadProductLine {
+  SOLAR
+  HEATING
+}
+
 enum TaskType {
   CALL
   EMAIL
@@ -140,6 +146,8 @@ model User {
   leadsAsAgent           Lead[]         @relation("AssignedAgent")
   // Relations - leads assigned as qualifier
   leadsAsQualifier       Lead[]         @relation("AssignedQualifier")
+  // Leads this user qualified (agent pool or post–qualify attribution)
+  leadsQualifiedBy       Lead[]         @relation("QualifiedByQualifier")
   // Relations - leads assigned as field sales
   leadsAsFieldSales      Lead[]         @relation("AssignedFieldSales")
   // Appointments as field sales rep
@@ -191,6 +199,7 @@ model Lead {
   notes                 String?    @db.Text
   depositionReason      String?
   roofCondition         String?    // excellent, good, fair, poor
+  productLine           LeadProductLine?
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 
@@ -221,6 +230,8 @@ model Lead {
   assignedAgent         User?       @relation("AssignedAgent", fields: [assignedAgentId], references: [id], onDelete: SetNull)
   assignedQualifierId   String?
   assignedQualifier     User?       @relation("AssignedQualifier", fields: [assignedQualifierId], references: [id], onDelete: SetNull)
+  qualifiedByQualifierId String?
+  qualifiedByQualifier  User?       @relation("QualifiedByQualifier", fields: [qualifiedByQualifierId], references: [id], onDelete: SetNull)
   assignedFieldSalesRepId String?
   assignedFieldSalesRep User?       @relation("AssignedFieldSales", fields: [assignedFieldSalesRepId], references: [id], onDelete: SetNull)
 
@@ -238,10 +249,12 @@ model Lead {
   @@index([source])
   @@index([assignedAgentId])
   @@index([assignedQualifierId])
+  @@index([qualifiedByQualifierId])
   @@index([assignedFieldSalesRepId])
   @@index([createdAt])
   @@index([duplicateOfLeadId])
   @@index([smsAutomationPaused])
+  @@index([productLine])
 }
 
 model LeadStatusHistory {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { QualifierLeadsTable } from "./QualifierLeadsTable";
 import type { QualifierLead } from "./QualifierKanban";
 import { RefreshCw } from "lucide-react";
@@ -7,10 +7,17 @@ import { useAuth } from "../lib/auth-context";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 
 const POLL_MS = 10_000;
-const SOURCES = "Rattle,Leadwise";
+
+function getSourcesForUser(username: string | undefined): string {
+  const uname = (username ?? "").toLowerCase();
+  if (uname === "louis") return "Rattle";
+  if (uname === "ella") return "Leadwise";
+  return "Rattle,Leadwise";
+}
 
 export function SpecialQualifierSheetsPage() {
   const { user } = useAuth();
+  const sources = getSourcesForUser(user?.username);
   const [leads, setLeads] = useState<QualifierLead[]>([]);
   /** Full skeleton only on first load — background polls stay silent to avoid flicker */
   const [initialLoading, setInitialLoading] = useState(true);
@@ -22,11 +29,11 @@ export function SpecialQualifierSheetsPage() {
     if (!user?.id) return;
     const res = await getLeads({
       pageSize: 500,
-      sources: SOURCES,
+      sources,
     });
     const items = (res.items as QualifierLead[]) ?? [];
     setLeads(items);
-  }, [user?.id]);
+  }, [user?.id, sources]);
 
   const runSyncAndLoad = useCallback(
     async (mode: "initial" | "background" | "manual") => {
@@ -90,7 +97,7 @@ export function SpecialQualifierSheetsPage() {
             />
             <span>
               {user?.specialSheetQualifier
-                ? `Google Sheets sync runs every ${POLL_MS / 1000}s (Rattle · Ver2, Leadwise · Leads). `
+                ? `Google Sheets sync runs every ${POLL_MS / 1000}s (Rattle · Ver2 -> Louis, Leadwise · Leads -> Ella). `
                 : `List refreshes every ${POLL_MS / 1000}s. Sheet import runs from the designated qualifier account. `}
               Newest leads first.
               {user?.specialSheetQualifier && backgroundSyncing ? (
@@ -120,9 +127,9 @@ export function SpecialQualifierSheetsPage() {
           if (user?.specialSheetQualifier) void runSyncAndLoad("manual");
           else void fetchLeadsOnly();
         }}
-        title="Rattle & Leadwise"
+        title={sources === "Rattle" ? "Rattle" : sources === "Leadwise" ? "Leadwise" : "Rattle & Leadwise"}
         showSource
-        showSourceFilter
+        showSourceFilter={sources.includes(",")}
         statusStyle="pill"
         showAgent={false}
       />

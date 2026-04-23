@@ -1,6 +1,11 @@
 import { prisma } from '../../db';
 import { LeadStatus, OpportunityStage, ProductType, AppointmentStatus, AppointmentOutcome } from '@prisma/client';
 
+type ReportScope = {
+  userId: string;
+  role: 'ADMIN' | 'AGENT' | 'QUALIFIER' | 'FIELD_SALES';
+};
+
 function getDateRange(monthsBack: number) {
   const to = new Date();
   const from = new Date();
@@ -8,13 +13,43 @@ function getDateRange(monthsBack: number) {
   return { from, to };
 }
 
-export async function getFunnelReport(monthsBack: number) {
+async function getAgentSubmittedLeadIds(agentId: string, from: Date, to: Date): Promise<string[]> {
+  const rows = await prisma.leadStatusHistory.findMany({
+    where: {
+      changedByUserId: agentId,
+      toStatus: LeadStatus.QUALIFYING,
+      createdAt: { gte: from, lte: to },
+    },
+    select: { leadId: true },
+    distinct: ['leadId'],
+  });
+  return rows.map((r) => r.leadId);
+}
+
+async function scopedLeadWhere(scope: ReportScope, from: Date, to?: Date) {
+  const createdAt = to ? { gte: from, lte: to } : { gte: from };
+  if (scope.role === 'ADMIN') return { createdAt };
+  if (scope.role === 'QUALIFIER') {
+    return {
+      createdAt,
+      OR: [{ assignedQualifierId: scope.userId }, { qualifiedByQualifierId: scope.userId }],
+    };
+  }
+  if (scope.role === 'FIELD_SALES') return { createdAt, assignedFieldSalesRepId: scope.userId };
+  const submittedIds = await getAgentSubmittedLeadIds(scope.userId, from, to ?? new Date());
+  return { createdAt, id: { in: submittedIds.length ? submittedIds : ['__none__'] } };
+}
+
+export async function getFunnelReport(monthsBack: number, scope: ReportScope) {
   const { from } = getDateRange(monthsBack);
+  const where = await scopedLeadWhere(scope, from);
 
   const leads = await prisma.lead.findMany({
-    where: { createdAt: { gte: from } },
-    select: { status: true },
+    where,
+    select: { id: true, status: true },
   });
+  const leadIds = leads.map((l) => l.id);
+  const noLeads = leadIds.length === 0;
 
   const stages = [
     { name: 'Leads Created', value: leads.length, key: 'total' },
@@ -47,7 +82,10 @@ export async function getFunnelReport(monthsBack: number) {
     {
       name: 'Proposals/Opportunities',
       value: await prisma.opportunity.count({
-        where: { createdAt: { gte: from } },
+        where: {
+          createdAt: { gte: from },
+          leadId: noLeads ? { in: ['__none__'] } : { in: leadIds },
+        },
       }),
       key: 'proposals',
     },
@@ -57,6 +95,7 @@ export async function getFunnelReport(monthsBack: number) {
         where: {
           stage: OpportunityStage.WON,
           createdAt: { gte: from },
+          leadId: noLeads ? { in: ['__none__'] } : { in: leadIds },
         },
       }),
       key: 'won',
@@ -66,12 +105,28 @@ export async function getFunnelReport(monthsBack: number) {
   return stages;
 }
 
-export async function getProductMixReport(monthsBack: number) {
+export async function getProductMixReport(monthsBack: number, scope: ReportScope) {
   const { from } = getDateRange(monthsBack);
+  const where =
+    scope.role === 'ADMIN'
+      ? { createdAt: { gte: from } }
+      : scope.role === 'FIELD_SALES'
+        ? { createdAt: { gte: from }, ownerId: scope.userId }
+        : scope.role === 'QUALIFIER'
+          ? {
+              createdAt: { gte: from },
+              lead: {
+                OR: [
+                  { assignedQualifierId: scope.userId },
+                  { qualifiedByQualifierId: scope.userId },
+                ],
+              },
+            }
+          : { createdAt: { gte: from } };
 
   const opportunities = await prisma.opportunity.findMany({
     where: {
-      createdAt: { gte: from },
+      ...where,
       stage: OpportunityStage.WON,
     },
     select: { productType: true, estimatedValue: true },
@@ -114,21 +169,54 @@ export async function getProductMixReport(monthsBack: number) {
   }));
 }
 
-export async function getMonthlyTrendsReport(monthsBack: number) {
+export async function getMonthlyTrendsReport(monthsBack: number, scope: ReportScope) {
   const { from } = getDateRange(monthsBack);
+  const leadWhere = await scopedLeadWhere(scope, from);
+  const appointmentWhere =
+    scope.role === 'ADMIN'
+      ? { createdAt: { gte: from } }
+      : scope.role === 'FIELD_SALES'
+        ? { createdAt: { gte: from }, fieldSalesRepId: scope.userId }
+        : scope.role === 'QUALIFIER'
+          ? {
+              createdAt: { gte: from },
+              lead: {
+                OR: [
+                  { assignedQualifierId: scope.userId },
+                  { qualifiedByQualifierId: scope.userId },
+                ],
+              },
+            }
+          : { createdAt: { gte: from } };
+  const opportunityWhere =
+    scope.role === 'ADMIN'
+      ? { createdAt: { gte: from } }
+      : scope.role === 'FIELD_SALES'
+        ? { createdAt: { gte: from }, ownerId: scope.userId }
+        : scope.role === 'QUALIFIER'
+          ? {
+              createdAt: { gte: from },
+              lead: {
+                OR: [
+                  { assignedQualifierId: scope.userId },
+                  { qualifiedByQualifierId: scope.userId },
+                ],
+              },
+            }
+          : { createdAt: { gte: from } };
 
   const leads = await prisma.lead.findMany({
-    where: { createdAt: { gte: from } },
+    where: leadWhere,
     select: { createdAt: true, status: true },
   });
 
   const appointments = await prisma.appointment.findMany({
-    where: { createdAt: { gte: from } },
+    where: appointmentWhere,
     select: { scheduledAt: true, status: true },
   });
 
   const opportunities = await prisma.opportunity.findMany({
-    where: { createdAt: { gte: from } },
+    where: opportunityWhere,
     select: { createdAt: true, stage: true, estimatedValue: true },
   });
 
@@ -182,8 +270,63 @@ export async function getMonthlyTrendsReport(monthsBack: number) {
     .map(([month, data]) => ({ month, ...data }));
 }
 
-export async function getRepPerformanceReport(monthsBack: number) {
+export async function getRepPerformanceReport(monthsBack: number, scope: ReportScope) {
   const { from } = getDateRange(monthsBack);
+
+  if (scope.role === 'QUALIFIER') {
+    const user = await prisma.user.findUnique({
+      where: { id: scope.userId },
+      select: { id: true, fullName: true, role: true },
+    });
+    if (!user || user.role !== 'QUALIFIER') {
+      return [];
+    }
+    const leadWhere = await scopedLeadWhere(scope, from);
+    const leadRows = await prisma.lead.findMany({
+      where: leadWhere,
+      select: { id: true },
+    });
+    const leadIds = leadRows.map((l) => l.id);
+    const empty = leadIds.length === 0;
+
+    const [appointmentCount, wonOpps] = await Promise.all([
+      prisma.appointment.count({
+        where: {
+          createdAt: { gte: from },
+          leadId: empty ? { in: ['__none__'] } : { in: leadIds },
+        },
+      }),
+      prisma.opportunity.findMany({
+        where: {
+          createdAt: { gte: from },
+          stage: OpportunityStage.WON,
+          leadId: empty ? { in: ['__none__'] } : { in: leadIds },
+        },
+        select: { estimatedValue: true },
+      }),
+    ]);
+
+    const leads = leadIds.length;
+    const appointments = appointmentCount;
+    const sales = wonOpps.length;
+    const revenue = wonOpps.reduce((sum, o) => sum + Number(o.estimatedValue), 0);
+    const calls = leads + appointments;
+    const conversionRate = calls > 0 ? ((sales / calls) * 100).toFixed(1) : '0';
+
+    return [
+      {
+        id: user.id,
+        name: user.fullName,
+        role: user.role,
+        calls,
+        leads,
+        appointments,
+        sales,
+        revenue,
+        conversionRate: parseFloat(conversionRate),
+      },
+    ];
+  }
 
   const users = await prisma.user.findMany({
     where: {
@@ -201,6 +344,10 @@ export async function getRepPerformanceReport(monthsBack: number) {
         where: { createdAt: { gte: from } },
         select: { id: true },
       },
+      leadsQualifiedBy: {
+        where: { createdAt: { gte: from } },
+        select: { id: true },
+      },
       appointments: {
         where: { createdAt: { gte: from } },
         select: { id: true, status: true },
@@ -214,7 +361,12 @@ export async function getRepPerformanceReport(monthsBack: number) {
 
   return users.map((user) => {
     const leads =
-      user.role === 'QUALIFIER' ? user.leadsAsQualifier.length : user.leadsAsAgent.length;
+      user.role === 'QUALIFIER'
+        ? new Set([
+            ...user.leadsAsQualifier.map((l) => l.id),
+            ...user.leadsQualifiedBy.map((l) => l.id),
+          ]).size
+        : user.leadsAsAgent.length;
     const appointments = user.appointments.length;
     const wonOpps = user.opportunities.filter((o) => o.stage === OpportunityStage.WON);
     const sales = wonOpps.length;
@@ -223,6 +375,7 @@ export async function getRepPerformanceReport(monthsBack: number) {
     const conversionRate = calls > 0 ? ((sales / calls) * 100).toFixed(1) : '0';
 
     return {
+      id: user.id,
       name: user.fullName,
       role: user.role,
       calls,
@@ -236,13 +389,14 @@ export async function getRepPerformanceReport(monthsBack: number) {
 }
 
 /** Weekly Lead Performance (Looker-style): Not Interested, Call Back, Wrong Number, Appointment Booked, DNQ */
-export async function getWeeklyLeadPerformanceReport(weeksBack = 1) {
+export async function getWeeklyLeadPerformanceReport(weeksBack = 1, scope: ReportScope) {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 7 * weeksBack);
+  const where = await scopedLeadWhere(scope, from, to);
 
   const leads = await prisma.lead.findMany({
-    where: { createdAt: { gte: from, lte: to } },
+    where,
     select: { id: true, status: true },
   });
 
@@ -270,13 +424,14 @@ export async function getWeeklyLeadPerformanceReport(weeksBack = 1) {
 }
 
 /** Leads Funnel (Looker-style): Total Leads → Contacted → Callback → Appointments Booked */
-export async function getWeeklyFunnelReport(weeksBack = 1) {
+export async function getWeeklyFunnelReport(weeksBack = 1, scope: ReportScope) {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 7 * weeksBack);
+  const where = await scopedLeadWhere(scope, from, to);
 
   const leads = await prisma.lead.findMany({
-    where: { createdAt: { gte: from, lte: to } },
+    where,
     select: { status: true },
   });
 
@@ -348,10 +503,11 @@ export async function getAgentOutcomesReport(agentId: string, weeksBack = 4) {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 7 * weeksBack);
+  const submittedIds = await getAgentSubmittedLeadIds(agentId, from, to);
 
   const leads = await prisma.lead.findMany({
     where: {
-      assignedAgentId: agentId,
+      id: { in: submittedIds.length ? submittedIds : ['__none__'] },
       createdAt: { gte: from, lte: to },
     },
     select: { status: true },
@@ -397,18 +553,19 @@ export async function getAgentOutcomesReport(agentId: string, weeksBack = 4) {
   return result.length > 0 ? result : [{ name: 'No leads', value: 0, fill: '#e2e8f0' }];
 }
 
-/** Agent-specific: Summary stats (leads assigned to agent) */
+/** Agent-specific: Summary stats (leads submitted by agent to qualifier) */
 export async function getAgentSummaryReport(agentId: string, weeksBack = 4) {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 7 * weeksBack);
+  const submittedIds = await getAgentSubmittedLeadIds(agentId, from, to);
 
   const leads = await prisma.lead.findMany({
     where: {
-      assignedAgentId: agentId,
+      id: { in: submittedIds.length ? submittedIds : ['__none__'] },
       createdAt: { gte: from, lte: to },
     },
-    select: { status: true },
+    select: { status: true, productLine: true },
   });
 
   const total = leads.length;
@@ -419,6 +576,12 @@ export async function getAgentSummaryReport(agentId: string, weeksBack = 4) {
   const appointmentSet = leads.filter((l) => l.status === LeadStatus.APPOINTMENT_SET).length;
   const inPipeline = leads.filter((l) => ['NEW', 'CONTACTED', 'INTERESTED', 'QUALIFIER_CALLBACK', 'NO_CONTACT'].includes(l.status)).length;
 
+  const byProductLine = {
+    solar: leads.filter((l) => l.productLine === 'SOLAR').length,
+    heating: leads.filter((l) => l.productLine === 'HEATING').length,
+    unspecified: leads.filter((l) => l.productLine == null).length,
+  };
+
   return {
     totalLeads: total,
     sentToQualifier,
@@ -426,17 +589,69 @@ export async function getAgentSummaryReport(agentId: string, weeksBack = 4) {
     appointmentSet,
     inPipeline,
     conversionRate: total > 0 ? Math.round((sentToQualifier / total) * 100) : 0,
+    byProductLine,
   };
 }
 
+/** Solar vs Heating (boilers) — same scope rules as funnel / weekly lead reports */
+export async function getLeadProductLineReport(
+  scope: ReportScope,
+  opts: { weeks?: number; months?: number }
+) {
+  const to = new Date();
+  const from = new Date();
+  if (opts.weeks != null) {
+    from.setDate(from.getDate() - 7 * opts.weeks);
+  } else {
+    const m = opts.months ?? 6;
+    from.setMonth(from.getMonth() - m);
+  }
+  const where = await scopedLeadWhere(scope, from, to);
+  const leads = await prisma.lead.findMany({
+    where,
+    select: { productLine: true },
+  });
+
+  let solar = 0;
+  let heating = 0;
+  let unspecified = 0;
+  for (const l of leads) {
+    if (l.productLine === 'SOLAR') solar += 1;
+    else if (l.productLine === 'HEATING') heating += 1;
+    else unspecified += 1;
+  }
+
+  const out: Array<{ name: string; value: number; fill: string }> = [];
+  if (solar) out.push({ name: 'Solar', value: solar, fill: '#f59e0b' });
+  if (heating) out.push({ name: 'Heating (boilers)', value: heating, fill: '#0284c7' });
+  if (unspecified) out.push({ name: 'Unspecified', value: unspecified, fill: '#94a3b8' });
+  return out.length ? out : [{ name: 'No leads in range', value: 0, fill: '#e2e8f0' }];
+}
+
 /** Appointment Outcomes (Looker-style): High % to sell, Future Appointment, Appt Not Sat */
-export async function getAppointmentOutcomesReport(weeksBack = 4) {
+export async function getAppointmentOutcomesReport(weeksBack = 4, scope: ReportScope) {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 7 * weeksBack);
+  const where =
+    scope.role === 'ADMIN'
+      ? { createdAt: { gte: from, lte: to } }
+      : scope.role === 'FIELD_SALES'
+        ? { createdAt: { gte: from, lte: to }, fieldSalesRepId: scope.userId }
+        : scope.role === 'QUALIFIER'
+          ? {
+              createdAt: { gte: from, lte: to },
+              lead: {
+                OR: [
+                  { assignedQualifierId: scope.userId },
+                  { qualifiedByQualifierId: scope.userId },
+                ],
+              },
+            }
+          : { createdAt: { gte: from, lte: to } };
 
   const appointments = await prisma.appointment.findMany({
-    where: { createdAt: { gte: from, lte: to } },
+    where,
     select: { status: true, outcome: true },
   });
 

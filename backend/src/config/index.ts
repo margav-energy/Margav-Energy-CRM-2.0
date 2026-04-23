@@ -121,8 +121,10 @@ export const config = {
   /** Google Calendar API — appointment sync (same OAuth/SA as Sheets; OAuth token needs Calendar scope). */
   googleCalendar: {
     enabled: process.env.GOOGLE_CALENDAR_ENABLED !== 'false' && process.env.GOOGLE_CALENDAR_ENABLED !== '0',
-    /** Target calendar: usually `sales@margav.energy` or `primary` for the OAuth user */
-    calendarId: (process.env.GOOGLE_CALENDAR_ID || 'sales@margav.energy').trim(),
+    /** Target calendar: booking calendar id or `primary` for the OAuth user */
+    calendarId:
+      (process.env.GOOGLE_CALENDAR_ID ||
+        'c_3c9fc2595de3b29e89bae6a30017d9d0d413b72932f1d5c37811cf9861c18253@group.calendar.google.com').trim(),
     timezone: process.env.GOOGLE_CALENDAR_TIMEZONE || 'Europe/London',
     /** Default survey / visit block length */
     defaultDurationMinutes: parseInt(process.env.GOOGLE_CALENDAR_DEFAULT_DURATION_MINUTES || '60', 10),

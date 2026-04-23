@@ -64,7 +64,7 @@ async function recordActivityEvent(
   });
 }
 
-async function getDefaultQualifierId(): Promise<string> {
+export async function getDefaultQualifierId(): Promise<string> {
   if (config.defaultQualifierId) {
     const user = await prisma.user.findUnique({
       where: { id: config.defaultQualifierId, role: 'QUALIFIER' },

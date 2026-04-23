@@ -376,16 +376,20 @@ export function LeadOperationsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Lead Operations</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Full visibility and control over all leads. Bulk assign, change status, merge duplicates.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-4">
+    <div className="mx-auto max-w-7xl space-y-6">
+      <div className="rounded-3xl border border-border/70 bg-gradient-to-br from-white via-background to-violet-50/30 p-5 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-5">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Lead Operations</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Full visibility and control over all leads. Bulk assign, change status, merge duplicates.
+            </p>
+          </div>
+        </div>
+
+        <Card className="rounded-2xl border-border/80">
+          <CardContent className="space-y-4 pt-6">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_180px_160px]">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -462,10 +466,10 @@ export function LeadOperationsPage() {
                 </div>
               )}
 
-              <div className="border rounded-lg overflow-x-auto">
+              <div className="border rounded-lg overflow-x-auto bg-background">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="bg-muted/40">
                       <TableHead className="w-10">
                         <Checkbox
                           checked={selectedIds.size === filteredLeads.length && filteredLeads.length > 0}
@@ -632,6 +636,7 @@ export function LeadOperationsPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
       <LeadOverviewDialog
         key={`${overviewLeadId ?? 'x'}-${overviewTab}`}

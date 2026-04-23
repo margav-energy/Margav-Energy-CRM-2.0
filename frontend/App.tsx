@@ -20,7 +20,6 @@ import { SmsAutomationPage } from './components/admin/SmsAutomationPage';
 import { UserManagementPage } from './components/admin/UserManagementPage';
 import { DataQualityPage } from './components/admin/DataQualityPage';
 import { AuditTrailPage } from './components/admin/AuditTrailPage';
-import { AdminSettingsPage } from './components/admin/AdminSettingsPage';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { GoogleCalendarEmbed } from './components/GoogleCalendarEmbed';
 
@@ -41,7 +40,7 @@ function SettingsPage() {
 
 function CalendarPage() {
   return (
-    <GoogleCalendarEmbed title="Google Calendar" description="sales@margav.energy — shared sales appointments." />
+    <GoogleCalendarEmbed title="Google Calendar" description="Booking calendar — shared appointments." />
   );
 }
 
@@ -51,7 +50,7 @@ function AppContent() {
 
   useEffect(() => {
     if (!user) return;
-    const adminPageIds = ['admin-overview', 'admin-leads', 'admin-team', 'admin-appointments', 'admin-sms', 'admin-users', 'admin-data-quality', 'admin-audit', 'admin-settings'];
+    const adminPageIds = ['admin-overview', 'admin-leads', 'admin-team', 'admin-appointments', 'admin-sms', 'admin-users', 'admin-data-quality', 'admin-audit'];
     const isAdminPage = adminPageIds.includes(currentPage);
     if (user.role === 'ADMIN') {
       if (currentPage === 'dashboard' || !isAdminPage) setCurrentPage('admin-overview');
@@ -81,8 +80,6 @@ function AppContent() {
           return <DataQualityPage />;
         case 'admin-audit':
           return <AuditTrailPage />;
-        case 'admin-settings':
-          return <AdminSettingsPage />;
         default:
           return <AdminOverview />;
       }

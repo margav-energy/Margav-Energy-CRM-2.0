@@ -15,6 +15,8 @@ const leadStatusEnum = z.enum([
   'QUALIFIER_CALLBACK',
 ]);
 
+const leadProductLineEnum = z.enum(['SOLAR', 'HEATING']);
+
 export const leadIdParamSchema = z.object({
   id: z.string().cuid(),
 });
@@ -32,6 +34,7 @@ export const createLeadSchema = z.object({
   notes: z.string().optional(),
   assignedAgentId: z.string().cuid().optional(),
   status: leadStatusEnum.optional(), // When sending to qualifier, use QUALIFYING for atomic create
+  productLine: leadProductLineEnum.optional(),
 });
 
 export const importLeadSchema = z.object({
@@ -69,6 +72,7 @@ export const updateLeadSchema = z.object({
   priority: z.boolean().optional(),
   /** Admin: this lead is a duplicate of the given canonical lead id */
   duplicateOfLeadId: z.string().cuid().nullable().optional(),
+  productLine: leadProductLineEnum.nullable().optional(),
 });
 
 export const updateLeadStatusSchema = z.object({
@@ -137,6 +141,7 @@ export const listLeadsQuerySchema = z.object({
   assignedQualifierId: z.string().cuid().optional(),
   assignedFieldSalesRepId: z.string().cuid().optional(),
   search: z.string().optional(),
+  productLine: leadProductLineEnum.optional(),
 });
 
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;

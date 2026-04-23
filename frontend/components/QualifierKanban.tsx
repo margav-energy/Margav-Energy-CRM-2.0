@@ -19,8 +19,11 @@ export interface QualifierLead {
   email?: string;
   status: string;
   source?: string | null;
+  productLine?: string | null;
   notes?: string | null;
   assignedAgent?: { fullName?: string };
   assignedQualifier?: { fullName?: string };
+  /** Set when a qualifier has submitted the qualify form (esp. agent-submitted pool leads). */
+  qualifiedByQualifier?: { fullName?: string };
   createdAt?: string;
 }

@@ -1,4 +1,4 @@
-import { BarChart3, Calendar, Home, Users, Target, CheckSquare, Settings, Shield, MessageSquare, Database, History, TableProperties } from 'lucide-react';
+import { BarChart3, Calendar, Home, Users, Target, CheckSquare, Shield, MessageSquare, Database, History, TableProperties } from 'lucide-react';
 import type { Role } from './auth-context';
 
 export interface NavItem {
@@ -24,7 +24,6 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'tasks', label: 'Tasks/Activities', icon: CheckSquare, roles: ['AGENT', 'QUALIFIER', 'FIELD_SALES'] },
   { id: 'calendar', label: 'Calendar', icon: Calendar, roles: ['QUALIFIER', 'FIELD_SALES'] },
   { id: 'reports', label: 'Reports/Analytics', icon: BarChart3, roles: ['AGENT', 'QUALIFIER', 'FIELD_SALES'] },
-  { id: 'settings', label: 'Settings', icon: Settings, roles: ['AGENT', 'QUALIFIER', 'FIELD_SALES'] },
 ];
 
 export const ADMIN_NAV_ITEMS: NavItem[] = [
@@ -36,7 +35,6 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { id: 'admin-users', label: 'Users & Permissions', icon: Shield, roles: ['ADMIN'] },
   { id: 'admin-data-quality', label: 'Data Quality', icon: Database, roles: ['ADMIN'] },
   { id: 'admin-audit', label: 'Audit Trail', icon: History, roles: ['ADMIN'] },
-  { id: 'admin-settings', label: 'Settings', icon: Settings, roles: ['ADMIN'] },
 ];
 
 export function getNavItemsForRole(role: Role): NavItem[] {
